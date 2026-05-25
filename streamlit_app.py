@@ -157,4 +157,29 @@ if sort_option == "🚀 Nejvíce rostoucí":
     if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=False)
     if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=False)
 elif sort_option == "📉 Nejvíce klesající":
-    if not df1.empty: df1 = df
+    if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=True)
+    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=True)
+
+col_tab1, col_tab2 = st.columns(2)
+
+def style_df(df):
+    display_df = df[["Akcie", "Cena ($)", "Změna (%)"]].copy()
+    return display_df.style.map(
+        lambda x: 'color: #00ff00; font-weight: 900' if x > 0 else ('color: #ff0000; font-weight: 900' if x < 0 else 'color: #ffffff; font-weight: 900'),
+        subset=['Změna (%)']
+    ).format({"Cena ($)": "{:.2f}", "Změna (%)": "{:+.2f} %"})
+
+selected_ticker = None
+selected_name = None
+
+with col_tab1:
+    st.write("**Tabulka 1: Růstové a Big Tech**")
+    if not df1.empty:
+        event1 = st.dataframe(style_df(df1), use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
+        if len(event1.selection.rows) > 0:
+            row_idx = event1.selection.rows[0]
+            selected_ticker = df1.iloc[row_idx]["Ticker"]
+            selected_name = df1.iloc[row_idx]["Akcie"]
+
+with col_tab2:
+    st.write("**Tabulka 2: Hodnotové a
