@@ -4,6 +4,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import time
 from datetime import datetime
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
 
 # --- NASTAVENÍ STRÁNKY ---
 st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="expanded")
@@ -199,7 +202,7 @@ if selected_ticker:
     with st.spinner(f'Stahuji detaily a graf pro {selected_name}...'):
         stock = yf.Ticker(selected_ticker)
         
-        # OBRNĚNÍ PROTI RATE LIMITU YAHOO
+        # Obrnění proti limitům Yahoo
         pe_ratio = 'N/A'
         high_52 = 'N/A'
         low_52 = 'N/A'
@@ -212,7 +215,6 @@ if selected_ticker:
             high_52 = stock_info.get('fiftyTwoWeekHigh', 'N/A')
             low_52 = stock_info.get('fiftyTwoWeekLow', 'N/A')
         except Exception:
-            # Pokud nás Yahoo zablokuje pro detaily, necháme tam N/A a nespadneme
             pass
         
         m1, m2, m3 = st.columns(3)
@@ -276,35 +278,43 @@ if selected_ticker:
         except Exception:
             st.error("Nepodařilo se stáhnout data pro graf (limit API). Zkuste to za chvíli.")
 
-    # --- ZPRÁVY / ČLÁNKY ---
-    st.markdown("### 📰 Aktuální zprávy")
+    # --- ZPRÁVY / ČLÁNKY (Přes Google News V ČEŠTINĚ) ---
+    st.markdown("### 📰 Aktuální zprávy (v češtině)")
     try:
-        news_data = stock.news
-        if news_data:
-            valid_news_found = False
-            for article in news_data[:7]:
-                title = article.get('title', 'Bez názvu')
-                link = article.get('link', '#')
-                publisher = article.get('publisher', 'Neznámý zdroj')
-                
-                pub_time = article.get('providerPublishTime')
-                if pub_time:
-                    date_str = datetime.fromtimestamp(pub_time).strftime('%d.%m.%Y %H:%M')
-                else:
-                    date_str = "Nedávno"
-                
-                if link != '#':
-                    valid_news_found = True
-                    st.markdown(f"**[{title}]({link})**")
-                    st.caption(f"🗞️ {publisher} | 🕒 {date_str}")
-                    st.write("") 
+        # Sestavení dotazu pro český Google (např. "Tesla akcie" nebo "TSLA")
+        query = f'"{selected_name}" akcie OR "{selected_ticker}"'
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=cs&gl=CZ&ceid=CZ:cs"
+        
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        response = urllib.request.urlopen(req, timeout=5)
+        root = ET.fromstring(response.read())
+        
+        valid_news_found = False
+        for item in root.findall('./channel/item')[:7]:
+            valid_news_found = True
+            title = item.find('title').text
+            link = item.find('link').text
             
-            if not valid_news_found:
-                st.info("Momentálně pro tuto společnost nejsou k dispozici žádné čitelné články.")
-        else:
-            st.info("Pro tuto akcii nebyly nalezeny žádné novinky.")
+            source_elem = item.find('source')
+            publisher = source_elem.text if source_elem is not None else "Google Zprávy"
+            
+            pub_date = item.find('pubDate').text
+            try:
+                # Oříznutí " GMT" a převedení do hezčího českého formátu
+                parsed_date = datetime.strptime(pub_date[:-4], "%a, %d %b %Y %H:%M:%S")
+                date_str = parsed_date.strftime("%d.%m.%Y %H:%M")
+            except:
+                # Kdyby selhal formát času, vypíše se originální
+                date_str = pub_date
+
+            st.markdown(f"**[{title}]({link})**")
+            st.caption(f"🗞️ {publisher} | 🕒 {date_str}")
+            st.write("")
+            
+        if not valid_news_found:
+            st.info("Momentálně pro tuto společnost nejsou k dispozici žádné články v češtině.")
     except Exception as e:
-        st.warning("Nepodařilo se načíst zprávy z Yahoo Finance. Zkuste to později.")
+        st.warning("Nepodařilo se načíst zprávy z Google News. Zkuste to později.")
 
     # --- SEZÓNNOST ---
     with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
