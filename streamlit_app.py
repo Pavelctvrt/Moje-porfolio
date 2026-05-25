@@ -6,27 +6,39 @@ import plotly.graph_objects as go
 # --- NASTAVENÍ STRÁNKY ---
 st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="expanded")
 
-# --- VYNUCENÍ ČERNÉHO POZADÍ A STYLU ---
+# --- VYNUCENÍ ČERNÉHO POZADÍ A MAXIMÁLNÍ ČITELNOSTI ---
 st.markdown("""
 <style>
+    /* Základní pozadí */
     .stApp, .main, [data-testid="stSidebar"] {
         background-color: #000000 !important;
         color: #ffffff !important;
     }
+    
+    /* Vynucení čistě bílého a tučnějšího písma pro lepší čitelnost na slunci */
+    .stMarkdown p, .stText, label, .stMetricLabel, [data-testid="stMetricValue"] {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Zvětšení metrik */
+    [data-testid="stMetricValue"] {
+        font-size: 2.8rem !important;
+        font-weight: 800 !important;
+    }
+    
+    /* Tabulky */
     [data-testid="stDataFrame"] {
         background-color: #111111 !important;
     }
+    
+    /* Schování zbytečností */
     footer {visibility: hidden;}
     header {background: transparent !important;}
-    /* Zvětšení metrik nad grafem */
-    [data-testid="stMetricValue"] {
-        font-size: 2.5rem !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- INICIALIZACE PORTFOLIA DO PAMĚTI (SESSION STATE) ---
-# Tímto si aplikace pamatuje tvé akcie, i když něco přidáš/odebereš
 if 'TICKERS_1' not in st.session_state:
     st.session_state.TICKERS_1 = {
         "SXR8.DE": "SXR8.DE", "Gold": "GLD", "Meta": "META", "Tesla": "TSLA", 
@@ -61,7 +73,7 @@ if st.sidebar.button("➕ Přidat akcii"):
             st.session_state.TICKERS_1[new_name] = new_ticker.upper()
         else:
             st.session_state.TICKERS_2[new_name] = new_ticker.upper()
-        st.cache_data.clear() # Vyčištění mezipaměti pro načtení nových dat
+        st.cache_data.clear()
         st.rerun()
 
 st.sidebar.markdown("---")
@@ -138,13 +150,27 @@ if not df1.empty or not df2.empty:
 
 st.markdown("---")
 
-# --- TABULKY S MOŽNOSTÍ KLIKNUTÍ ---
+# --- ŘAZENÍ TABULEK ---
+st.markdown("### Přehled akcií")
+sort_option = st.radio(
+    "Rychlé řazení tabulek:", 
+    ["Výchozí", "🚀 Nejvíce rostoucí", "📉 Nejvíce klesající"], 
+    horizontal=True
+)
+
+if sort_option == "🚀 Nejvíce rostoucí":
+    if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=False)
+    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=False)
+elif sort_option == "📉 Nejvíce klesající":
+    if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=True)
+    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=True)
+
 col_tab1, col_tab2 = st.columns(2)
 
 def style_df(df):
     display_df = df[["Akcie", "Cena ($)", "Změna (%)"]].copy()
     return display_df.style.map(
-        lambda x: 'color: #00ff00; font-weight: bold' if x > 0 else ('color: #ff0000; font-weight: bold' if x < 0 else ''),
+        lambda x: 'color: #00ff00; font-weight: 900' if x > 0 else ('color: #ff0000; font-weight: 900' if x < 0 else 'color: #ffffff; font-weight: 900'),
         subset=['Změna (%)']
     ).format({"Cena ($)": "{:.2f}", "Změna (%)": "{:+.2f} %"})
 
@@ -171,12 +197,11 @@ with col_tab2:
 
 st.markdown("---")
 
-# --- VYKRESLENÍ GRAFU A DETAILŮ PO KLIKNUTÍ ---
+# --- VYKRESLENÍ GRAFU, METRIK A SEZÓNNOSTI ---
 if selected_ticker:
     st.subheader(f"📊 Detail: {selected_name} ({selected_ticker})")
     
     with st.spinner(f'Stahuji detaily a graf pro {selected_name}...'):
-        # 1. Získání P/E a 52Week High/Low (Načítáme pouze pro vybranou akcii)
         stock_info = yf.Ticker(selected_ticker).info
         pe_ratio = stock_info.get('trailingPE', 'N/A')
         if isinstance(pe_ratio, (int, float)):
@@ -185,102 +210,14 @@ if selected_ticker:
         high_52 = stock_info.get('fiftyTwoWeekHigh', 'N/A')
         low_52 = stock_info.get('fiftyTwoWeekLow', 'N/A')
         
-        # 2. Velké zobrazení metrik
         m1, m2, m3 = st.columns(3)
-        # Získáme přesnou poslední cenu z tabulky
         aktuální_cena_z_tabulky = df_all.loc[df_all['Ticker'] == selected_ticker, 'Cena ($)'].values[0]
         
         m1.metric("Aktuální cena", f"{aktuální_cena_z_tabulky:.2f}")
         m2.metric("P/E Ratio", pe_ratio)
         m3.metric("Min / Max (52 týdnů)", f"{low_52} / {high_52}" if low_52 != 'N/A' else "N/A")
 
-        st.markdown("<br>", unsafe_allow_html=True) # Odřádkování pro lepší vzhled
-
-        # 3. Graf
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         timeframes = {
-            "1 Den": ("1d", "1m"), "1 Týden": ("5d", "15m"), "1 Měsíc": ("1mo", "1d"), 
-            "3 Měsíce": ("3mo", "1d"), "Půl roku": ("6mo", "1d"), "YTD": ("ytd", "1d"), 
-            "1 Rok": ("1y", "1d"), "2 Roky": ("2y", "1wk"), "5 Let": ("5y", "1wk"), 
-            "Celá historie": ("max", "1mo")
-        }
-        
-        selected_tf_label = st.radio("Vyber časový úsek:", list(timeframes.keys()), horizontal=True)
-        period, interval = timeframes[selected_tf_label]
-        
-        history_data = yf.download(selected_ticker, period=period, interval=interval, progress=False)
-        
-        if not history_data.empty:
-            if isinstance(history_data.columns, pd.MultiIndex):
-                history_data.columns = history_data.columns.droplevel(1)
-            
-            history_data = history_data.dropna(subset=['Close'])
-            history_data = history_data[history_data['Close'] > 0]
-            
-            first_price = history_data['Close'].iloc[0]
-            last_price = history_data['Close'].iloc[-1]
-            line_color = '#00ff00' if last_price >= first_price else '#ff0000'
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=history_data.index, y=history_data['Close'], mode='lines',
-                name=selected_name, line=dict(color=line_color, width=3), fill='tozeroy',
-                fillcolor=f"rgba({0 if line_color=='#00ff00' else 255}, {255 if line_color=='#00ff00' else 0}, 0, 0.1)"
-            ))
-            
-            # PŘIDÁNÍ VÝRAZNÉ LINKY PRO AKTUÁLNÍ CENU PŘÍMO DO GRAFU
-            fig.add_hline(
-                y=last_price, 
-                line_dash="dot", 
-                line_color="white",
-                annotation_text=f"AKT. CENA: {last_price:.2f}", 
-                annotation_position="top left",
-                annotation_font=dict(size=14, color="white", family="Arial Black")
-            )
-            
-            y_min = history_data['Close'].min() * 0.99
-            y_max = history_data['Close'].max() * 1.01
-            
-            fig.update_layout(
-                xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark",
-                yaxis=dict(range=[y_min, y_max]),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
-                font=dict(color="white")
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    # --- SEZÓNNOST (Tabulka Měsíce x Roky) ---
-    st.subheader(f"📅 Sezónnost: {selected_name} (Měsíční výnosy v %)")
-    with st.spinner('Počítám sezónnostní matici...'):
-        seas_data = yf.download(selected_ticker, period="10y", interval="1mo", progress=False)
-        
-        if not seas_data.empty:
-            if isinstance(seas_data.columns, pd.MultiIndex):
-                seas_data.columns = seas_data.columns.droplevel(1)
-                
-            seas_data = seas_data.dropna(subset=['Close'])
-            seas_data = seas_data[seas_data['Close'] > 0]
-            
-            seas_data['Return'] = seas_data['Close'].pct_change() * 100
-            seas_data = seas_data.dropna(subset=['Return'])
-            
-            seas_data['Rok'] = seas_data.index.year
-            seas_data['Měsíc'] = seas_data.index.month
-            
-            pivot_df = seas_data.pivot(index='Rok', columns='Měsíc', values='Return')
-            
-            months_names = {
-                1: 'Leden', 2: 'Únor', 3: 'Březen', 4: 'Duben', 5: 'Květen', 6: 'Červen', 
-                7: 'Červenec', 8: 'Srpen', 9: 'Září', 10: 'Říjen', 11: 'Listopad', 12: 'Prosinec'
-            }
-            pivot_df = pivot_df.rename(columns=months_names)
-            
-            def style_seasonality(val):
-                if pd.isna(val):
-                    return ''
-                color = '#00ff00' if val > 0 else ('#ff0000' if val < 0 else 'white')
-                return f'color: {color}; font-weight: bold;'
-            
-            styled_pivot = pivot_df.style.map(style_seasonality).format("{:+.2f} %", na_rep="-")
-            st.dataframe(styled_pivot, use_container_width=True)
-else:
-    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení jejího detailního grafu, P/E a sezónnosti.")
+            "1 Den": ("1d", "1m"), "1 Týden": ("5d", "15
