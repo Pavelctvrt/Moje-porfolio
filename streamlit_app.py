@@ -24,7 +24,6 @@ st.title("💼 Řídicí věž mých financí")
 st.write("Vítejte ve svém investičním přehledu. Data jsou automaticky stahována live z Yahoo Finance.")
 
 # 2. Definice tvých 40 akcií (Tickery)
-# Seznam obsahuje mix populárních amerických, evropských i globálních titulů
 tickery = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK-B", "JNJ", "V",
     "WMT", "PG", "MA", "UNH", "HD", "XOM", "DIS", "KO", "PEP", "COST",
@@ -33,7 +32,7 @@ tickery = [
 ]
 
 # 3. Načítání dat z Yahoo Finance
-@st.cache_data(ttl=3600)  # Data se uloží do paměti na 1 hodinu, aby web běžel bleskově
+@st.cache_data(ttl=3600)
 def nacti_data_portfolia(seznam_tickeru):
     data_list = []
     progres_bar = st.progress(0, text="Stahuji aktuální kurzy z burzy...")
@@ -46,8 +45,12 @@ def nacti_data_portfolia(seznam_tickeru):
             
             if not historie.empty:
                 aktualni_cena = historie['Close'].iloc[-1]
-                predchozi_cena = historie['Close'].iloc[-2] if len(historie) > 1 else aktualni_cena
-zmena_procenta = ((aktualni_cena - predchozi_cena) / predchozi_cena) * 100
+                if len(historie) > 1:
+                    predchozi_cena = historie['Close'].iloc[-2]
+                else:
+                    predchozi_cena = aktualni_cena
+                
+                zmena_procenta = ((aktualni_cena - predchozi_cena) / predchozi_cena) * 100
                 
                 nazev = info.get('longName', tkr)
                 sektor = info.get('sector', 'Neznámý sektor')
@@ -70,6 +73,7 @@ zmena_procenta = ((aktualni_cena - predchozi_cena) / predchozi_cena) * 100
 
 df = nacti_data_portfolia(tickery)
 
+# 4. Zobrazení aplikace
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -110,7 +114,6 @@ if not df.empty:
     st.markdown("---")
 
     st.subheader("📋 Kompletní přehled akciových titulů")
-    
     vyhledavani = st.text_input("🔍 Rychlé vyhledávání akcie (napiš Ticker nebo název):")
     if vyhledavani:
         df_filtrovane = df[df['Ticker'].str.contains(vyhledavani, case=False) | df['Název společnosti'].str.contains(vyhledavani, case=False)]
