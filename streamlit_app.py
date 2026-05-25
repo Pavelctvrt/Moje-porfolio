@@ -1,19 +1,28 @@
 import streamlit as st
 import pandas as pd
 
-# 1. Nastavení stránky
+# 1. Nastavení stránky a kompletní černý režim pomocí CSS
 st.set_page_config(page_title="Moje Portfolio", layout="wide")
 
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
+    /* Černé pozadí celé aplikace */
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
+    }
+    /* Tmavé boxy pro metriky */
     .metric-box {
-        background-color: white;
+        background-color: #1E232A;
         padding: 20px;
         border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #30363D;
         text-align: center;
+        color: #FAFAFA;
     }
+    /* Úprava textů v boxech, aby svítily */
+    .metric-box h3 { color: #8B949E !important; font-size: 16px; }
+    .metric-box h2 { color: #58A6FF !important; font-size: 28px; margin: 5px 0 0 0; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -78,7 +87,7 @@ with col3:
     
 st.markdown("---")
 
-# 4. Samotná interaktivní tabulka
+# 4. Samotná interaktivní tabulka s barvami
 st.subheader("📋 Kompletní přehled tvých 40 akciových titulů")
 vyhledavani = st.text_input("🔍 Rychlé vyhledávání akcie (napiš Ticker nebo název společnosti):")
 
@@ -86,9 +95,10 @@ if vyhledavani:
     df_filtrovane = df[df['Ticker'].str.contains(vyhledavani, case=False) | df['Název společnosti'].str.contains(vyhledavani, case=False)]
 else:
     df_filtrovane = df
-    
-st.dataframe(
-    df_filtrovane.style.background_gradient(subset=['Poslední změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3),
-    use_container_width=True,
-    hide_index=True
-)
+
+# Vybarvení tabulky (ošetřeno tak, aby bez matplotlibu nespadlo)
+try:
+    styler = df_filtrovane.style.background_gradient(subset=['Poslední změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3)
+    st.dataframe(styler, use_container_width=True, hide_index=True)
+except Exception:
+    st.dataframe(df_filtrovane, use_container_width=True, hide_index=True)
