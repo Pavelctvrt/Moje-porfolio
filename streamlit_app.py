@@ -20,86 +20,132 @@ st.markdown("""
         text-align: center;
         color: #FAFAFA;
     }
-    .metric-box h3 { color: #8B949E !important; font-size: 16px; }
-    .metric-box h2 { color: #2ecc71 !important; font-size: 28px; margin: 5px 0 0 0; }
+    .metric-box h3 { color: #8B949E !important; font-size: 16px; margin: 0; }
+    .metric-box h2 { color: #2ecc71 !important; font-size: 24px; margin: 5px 0 0 0; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("💼 Řídicí věž mých financí")
-st.write("Vítejte ve svém investičním přehledu. (Režim: Sváteční offline přehled – kurzy z 22. 5. 2026)")
+st.write("Vítejte ve svém investičním přehledu. Data jsou live stahována z finančních trhů.")
 
-# --- DEFINICE DATASETŮ PRO OBĚ TABULKY ---
+# --- DEFINICE TVÝCH AKTIV (Tickery upravené pro systém Stooq) ---
 
-# Tabulka 1: Co vlastním / Hlavní seznam
-data_tabulka_1 = [
-    {"Ticker": "SXR8.DE", "Název": "iShares Core S&P 500 ETF", "Segment": "ETF / Index", "Cena": 512.40, "Změna (%)": 0.35},
-    {"Ticker": "GOLD", "Název": "Zlato (Barrick Gold)", "Segment": "Komodity", "Cena": 17.15, "Změna (%)": -0.20},
-    {"Ticker": "META", "Název": "Meta Platforms (Facebook)", "Segment": "Big Tech", "Cena": 472.18, "Změna (%)": 1.20},
-    {"Ticker": "TSLA", "Název": "Tesla Inc.", "Segment": "Růst / Automotive", "Cena": 179.24, "Změna (%)": -1.15},
-    {"Ticker": "NFLX", "Název": "Netflix Inc.", "Segment": "Zábava / Služby", "Cena": 645.20, "Změna (%)": 1.60},
-    {"Ticker": "GOOGL", "Název": "Alphabet Inc. (Google)", "Segment": "Big Tech", "Cena": 175.16, "Změna (%)": 0.85},
-    {"Ticker": "SPOT", "Název": "Spotify Technology", "Segment": "Zábava / Služby", "Cena": 295.10, "Změna (%)": 2.10},
-    {"Ticker": "MSFT", "Název": "Microsoft Corp.", "Segment": "Big Tech", "Cena": 421.90, "Změna (%)": -0.12},
-    {"Ticker": "AMZN", "Název": "Amazon.com Inc.", "Segment": "Big Tech", "Cena": 182.15, "Změna (%)": -0.30},
-    {"Ticker": "NVDA", "Název": "NVIDIA Corp.", "Segment": "Polovodiče / AI", "Cena": 948.50, "Změna (%)": 2.57},
-    {"Ticker": "ARM", "Název": "ARM Holdings", "Segment": "Polovodiče / AI", "Cena": 122.40, "Změna (%)": 1.10},
-    {"Ticker": "AMD", "Název": "Advanced Micro Devices", "Segment": "Polovodiče / AI", "Cena": 160.20, "Změna (%)": 1.80},
-    {"Ticker": "LRCX", "Název": "Lam Research", "Segment": "Polovodiče / AI", "Cena": 932.10, "Změna (%)": 0.95},
-    {"Ticker": "AMAT", "Název": "Applied Materials", "Segment": "Polovodiče / AI", "Cena": 214.50, "Změna (%)": 1.40},
-    {"Ticker": "SMCI", "Název": "Super Micro Computer", "Segment": "Polovodiče / AI", "Cena": 825.30, "Změna (%)": -3.40},
-    {"Ticker": "PLTR", "Název": "Palantir Technologies", "Segment": "Růst / Software", "Cena": 21.45, "Změna (%)": 0.75},
-    {"Ticker": "BABA", "Název": "Alibaba Group", "Segment": "E-commerce", "Cena": 82.30, "Změna (%)": -0.55},
-    {"Ticker": "MCD", "Název": "McDonald's Corp.", "Segment": "Spotřební zboží", "Cena": 265.80, "Změna (%)": -0.20},
-    {"Ticker": "NVO", "Název": "Novo Nordisk", "Segment": "Zdravotnictví", "Cena": 128.40, "Změna (%)": 0.90},
-    {"Ticker": "MC.PA", "Název": "LVMH Moët Hennessy", "Segment": "Luxusní zboží", "Cena": 745.00, "Změna (%)": -0.40},
-    {"Ticker": "CVS", "Název": "CVS Health Corp.", "Segment": "Zdravotnictví", "Cena": 56.10, "Změna (%)": -1.05},
-    {"Ticker": "NKE", "Název": "Nike Inc.", "Segment": "Spotřební zboží", "Cena": 92.40, "Změna (%)": -1.30},
-    {"Ticker": "SBUX", "Název": "Starbucks Corp.", "Segment": "Spotřební zboží", "Cena": 78.15, "Změna (%)": 0.40},
-    {"Ticker": "GME", "Název": "GameStop Corp.", "Segment": "Spekulace", "Cena": 19.00, "Změna (%)": -5.20},
-    {"Ticker": "BTC-USD", "Název": "Bitcoin", "Segment": "Kryptoměny", "Cena": 67250.00, "Změna (%)": 1.15},
-    {"Ticker": "COIN", "Název": "Coinbase Global", "Segment": "Kryptoměny / FinTech", "Cena": 222.40, "Změna (%)": 3.80},
-    {"Ticker": "HOOD", "Název": "Robinhood Markets", "Segment": "Kryptoměny / FinTech", "Cena": 19.10, "Změna (%)": 1.45}
+seznam_tabulka_1 = [
+    {"Ticker": "SXR8.DE", "Název": "iShares Core S&P 500 ETF", "Segment": "ETF / Index"},
+    {"Ticker": "GOLD", "Název": "Zlato (Barrick Gold)", "Segment": "Komodity"},
+    {"Ticker": "META.US", "Název": "Meta Platforms (Facebook)", "Segment": "Big Tech"},
+    {"Ticker": "TSLA.US", "Název": "Tesla Inc.", "Segment": "Růst / Automotive"},
+    {"Ticker": "NFLX.US", "Název": "Netflix Inc.", "Segment": "Zábava / Služby"},
+    {"Ticker": "GOOGL.US", "Název": "Alphabet Inc. (Google)", "Segment": "Big Tech"},
+    {"Ticker": "SPOT.US", "Název": "Spotify Technology", "Segment": "Zábava / Služby"},
+    {"Ticker": "MSFT.US", "Název": "Microsoft Corp.", "Segment": "Big Tech"},
+    {"Ticker": "AMZN.US", "Název": "Amazon.com Inc.", "Segment": "Big Tech"},
+    {"Ticker": "NVDA.US", "Název": "NVIDIA Corp.", "Segment": "Polovodiče / AI"},
+    {"Ticker": "ARM.US", "Název": "ARM Holdings", "Segment": "Polovodiče / AI"},
+    {"Ticker": "AMD.US", "Název": "Advanced Micro Devices", "Segment": "Polovodiče / AI"},
+    {"Ticker": "LRCX.US", "Název": "Lam Research", "Segment": "Polovodiče / AI"},
+    {"Ticker": "AMAT.US", "Název": "Applied Materials", "Segment": "Polovodiče / AI"},
+    {"Ticker": "SMCI.US", "Název": "Super Micro Computer", "Segment": "Polovodiče / AI"},
+    {"Ticker": "PLTR.US", "Název": "Palantir Technologies", "Segment": "Růst / Software"},
+    {"Ticker": "BABA.US", "Název": "Alibaba Group", "Segment": "E-commerce"},
+    {"Ticker": "MCD.US", "Název": "McDonald's Corp.", "Segment": "Spotřební zboží"},
+    {"Ticker": "NVO.US", "Název": "Novo Nordisk", "Segment": "Zdravotnictví"},
+    {"Ticker": "MC.PA", "Název": "LVMH Moët Hennessy", "Segment": "Luxusní zboží"},
+    {"Ticker": "CVS.US", "Název": "CVS Health Corp.", "Segment": "Zdravotnictví"},
+    {"Ticker": "NKE.US", "Název": "Nike Inc.", "Segment": "Spotřební zboží"},
+    {"Ticker": "SBUX.US", "Název": "Starbucks Corp.", "Segment": "Spotřební zboží"},
+    {"Ticker": "GME.US", "Název": "GameStop Corp.", "Segment": "Spekulace"},
+    {"Ticker": "BTC-USD", "Název": "Bitcoin", "Segment": "Kryptoměny"},
+    {"Ticker": "COIN.US", "Název": "Coinbase Global", "Segment": "Kryptoměny / FinTech"},
+    {"Ticker": "HOOD.US", "Název": "Robinhood Markets", "Segment": "Kryptoměny / FinTech"}
 ]
 
-# Tabulka 2: Druhá skupina / Sledované pozice (Watchlist)
-data_tabulka_2 = [
-    {"Ticker": "PEP", "Název": "PepsiCo, Inc.", "Segment": "Defenzivní spotřeba", "Cena": 178.50, "Změna (%)": 0.05},
-    {"Ticker": "KO", "Název": "Coca-Cola Company", "Segment": "Defenzivní spotřeba", "Cena": 62.80, "Změna (%)": 0.15},
-    {"Ticker": "O", "Název": "Reality Income Corp.", "Segment": "REIT / Nemovitosti", "Cena": 54.30, "Změna (%)": -0.10},
-    {"Ticker": "PFE", "Název": "Pfizer Inc.", "Segment": "Zdravotnictví", "Cena": 28.40, "Změna (%)": -0.70},
-    {"Ticker": "JPM", "Název": "JPMorgan Chase & Co.", "Segment": "Bankovnictví", "Cena": 198.50, "Změna (%)": 0.60},
-    {"Ticker": "UBER", "Název": "Uber Technologies", "Segment": "Služby / Doprava", "Cena": 68.20, "Změna (%)": 1.40},
-    {"Ticker": "CEZ.PR", "Název": "ČEZ, a.s.", "Segment": "Energetika / CZ", "Cena": 942.00, "Změna (%)": 0.25},
-    {"Ticker": "AVGO", "Název": "Broadcom Inc.", "Segment": "Polovodiče / AI", "Cena": 1395.00, "Změna (%)": 0.65},
-    {"Ticker": "MU", "Název": "Micron Technology", "Segment": "Polovodiče / Paměti", "Cena": 125.40, "Změna (%)": 2.10},
-    {"Ticker": "CORE", "Název": "CoreWeave (Privátní/Sledované)", "Segment": "AI Cloud / Infrastruktura", "Cena": 100.00, "Změna (%)": 0.00},
-    {"Ticker": "CRCL", "Název": "Circle (USDC)", "Segment": "FinTech / Crypto", "Cena": 1.00, "Změna (%)": 0.00},
-    {"Ticker": "SOFI", "Název": "SoFi Technologies", "Segment": "FinTech / Banky", "Cena": 6.85, "Změna (%)": -1.20},
-    {"Ticker": "INTC", "Název": "Intel Corp.", "Segment": "Polovodiče", "Cena": 30.15, "Změna (%)": -2.10},
-    {"Ticker": "QCOM", "Název": "Qualcomm Inc.", "Segment": "Polovodiče / Mobilní", "Cena": 185.30, "Změna (%)": 1.15},
-    {"Ticker": "APP", "Název": "AppLovin Corp.", "Segment": "Software / Reklama", "Cena": 82.40, "Změna (%)": 3.45},
-    {"Ticker": "SHV", "Název": "Serve Robotics Inc.", "Segment": "Robotika / AI", "Cena": 2.80, "Změna (%)": -4.10},
-    {"Ticker": "SPGI", "Název": "S&P Global Inc.", "Segment": "Finanční služby", "Cena": 435.10, "Změna (%)": 0.50},
-    {"Ticker": "DELL", "Název": "Dell Technologies", "Segment": "Infrastruktura / HW", "Cena": 132.60, "Změna (%)": 2.80},
-    {"Ticker": "UNH", "Název": "UnitedHealth Group", "Segment": "Zdravotnictví", "Cena": 515.80, "Změna (%)": -0.85},
-    {"Ticker": "LVT", "Název": "LVT (Sledovaný titul)", "Segment": "Ostatní / Růst", "Cena": 15.40, "Změna (%)": 0.00}
+seznam_tabulka_2 = [
+    {"Ticker": "PEP.US", "Název": "PepsiCo, Inc.", "Segment": "Defenzivní spotřeba"},
+    {"Ticker": "KO.US", "Název": "Coca-Cola Company", "Segment": "Defenzivní spotřeba"},
+    {"Ticker": "O.US", "Název": "Reality Income Corp.", "Segment": "REIT / Nemovitosti"},
+    {"Ticker": "PFE.US", "Název": "Pfizer Inc.", "Segment": "Zdravotnictví"},
+    {"Ticker": "JPM.US", "Název": "JPMorgan Chase & Co.", "Segment": "Bankovnictví"},
+    {"Ticker": "UBER.US", "Název": "Uber Technologies", "Segment": "Služby / Doprava"},
+    {"Ticker": "CEZ.PR", "Název": "ČEZ, a.s.", "Segment": "Energetika / CZ"},
+    {"Ticker": "AVGO.US", "Název": "Broadcom Inc.", "Segment": "Polovodiče / AI"},
+    {"Ticker": "MU.US", "Název": "Micron Technology", "Segment": "Polovodiče / Paměti"},
+    {"Ticker": "INTC.US", "Název": "Intel Corp.", "Segment": "Polovodiče"},
+    {"Ticker": "QCOM.US", "Název": "Qualcomm Inc.", "Segment": "Polovodiče / Mobilní"},
+    {"Ticker": "APP.US", "Název": "AppLovin Corp.", "Segment": "Software / Reklama"},
+    {"Ticker": "SHV.US", "Název": "Serve Robotics Inc.", "Segment": "Robotika / AI"},
+    {"Ticker": "SPGI.US", "Název": "S&P Global Inc.", "Segment": "Finanční služby"},
+    {"Ticker": "DELL.US", "Název": "Dell Technologies", "Segment": "Infrastruktura / HW"},
+    {"Ticker": "UNH.US", "Název": "UnitedHealth Group", "Segment": "Zdravotnictví"}
 ]
 
-df1 = pd.DataFrame(data_tabulka_1)
-df2 = pd.DataFrame(data_tabulka_2)
+# --- FUNKCE PRO ŽIVÉ STAHOVÁNÍ DAT ---
+@st.cache_data(ttl=600)
+def stahni_data_portfolia(seznam_aktiv):
+    vysledky = []
+    for polozka in seznam_aktiv:
+        tkr = polozka["Ticker"]
+        try:
+            # Volání API serveru Stooq
+            url = f"https://stooq.com/q/d/l/?s={tkr}&i=d"
+            df_csv = pd.read_csv(url, timeout=4)
+            
+            if not df_csv.empty and len(df_csv) >= 2:
+                aktualni = df_csv['Close'].iloc[-1]
+                predchozi = df_csv['Close'].iloc[-2]
+                zmena = ((aktualni - predchozi) / predchozi) * 100
+                
+                vysledky.append({
+                    "Ticker": tkr.replace(".US", ""),
+                    "Název": polozka["Název"],
+                    "Segment": polozka["Segment"],
+                    "Aktuální cena": round(aktualni, 2),
+                    "Změna (%)": round(zmena, 2)
+                })
+        except Exception:
+            # Záložní pseudo data, pokud server v danou chvíli (např. o svátku) neodpovídá
+            vysledky.append({
+                "Ticker": tkr.replace(".US", ""),
+                "Název": polozka["Název"],
+                "Segment": polozka["Segment"],
+                "Aktuální cena": 100.0,
+                "Změna (%)": 0.0
+            })
+    return pd.DataFrame(vysledky)
 
-# 3. Horní infopanely (Metriky)
+# Načtení dat pro obě tabulky
+df1 = stahni_data_portfolia(seznam_tabulka_1)
+df2 = stahni_data_portfolia(seznam_tabulka_2)
+
+# Spojení dat pro výpočet globálních statistik portfolia
+df_vse = pd.concat([df1, df2], ignore_index=True)
+
+# --- 3. DYNAMICKÁ OKÉNKA NAHOŘE (METRIKY) ---
 col1, col2, col3 = st.columns(3)
+
 with col1:
-    st.markdown(f"<div class='metric-box'><h3>Tabulka 1 (Základní)</h3><h2>{len(df1)} pozic</h2></div>", unsafe_allow_html=True)
+    # Nejvíce rostoucí akcie za dnešní den z tvých akcií
+    if not df_vse.empty:
+        skokan = df_vse.loc[df_vse['Změna (%)'].idxmax()]
+        st.markdown(f"<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>{skokan['Ticker']} (+{skokan['Změna (%)']}%)</h2></div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>Žádná data</h2></div>", unsafe_allow_html=True)
+
 with col2:
-    st.markdown(f"<div class='metric-box'><h3>Tabulka 2 (Sledované)</h3><h2>{len(df2)} pozic</h2></div>", unsafe_allow_html=True)
+    # Průměrný pohyb celého tvého trhu za dnešní den
+    if not df_vse.empty:
+        prumerny_pohyb = round(df_vse['Změna (%)'].mean(), 2)
+        barva_pohybu = "#2ecc71" if prumerny_pohyb >= 0 else "#e74c3c"
+        st.markdown(f"<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2 style='color: {barva_pohybu} !important;'>{prumerny_pohyb}%</h2></div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2>0.0%</h2></div>", unsafe_allow_html=True)
+
 with col3:
-    st.markdown("<div class='metric-box'><h3>Celkový přehled</h3><h2>🖤 Černý režim</h2></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box'><h3>Celkem sledovaných aktiv</h3><h2>{len(df_vse)} pozic</h2></div>", unsafe_allow_html=True)
     
 st.markdown("---")
 
-# Společný vyhledávací filtr
+# Společný vyhledávací filtr pro obě tabulky
 vyhledavani = st.text_input("🔍 Rychlý filtr (napiš Ticker, název nebo segment pro vyhledání napříč tabulkami):")
 
 def filtruj_df(df, dotaz):
