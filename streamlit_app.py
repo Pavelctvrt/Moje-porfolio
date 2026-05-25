@@ -2,13 +2,29 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
 
 # --- NASTAVENÍ STRÁNKY ---
-st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Moje Portfolio", layout="wide")
+
+# --- VYNUCENÍ ČERNÉHO POZADÍ A STYLU ---
+st.markdown("""
+<style>
+    /* Absolutně černé pozadí pro celou aplikaci */
+    .stApp, .main {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+    }
+    /* Úprava tabulek, aby ladily s černým pozadím */
+    [data-testid="stDataFrame"] {
+        background-color: #111111 !important;
+    }
+    /* Schování zbytečností */
+    footer {visibility: hidden;}
+    header {background: transparent !important;}
+</style>
+""", unsafe_allow_html=True)
 
 # --- DEFINICE PORTFOLIA ---
-# Převod tvých názvů na oficiální Yahoo Finance tickery
 TICKERS_1 = {
     "SXR8.DE": "SXR8.DE", "Gold": "GLD", "Meta": "META", "Tesla": "TSLA", 
     "Netflix": "NFLX", "Google": "GOOGL", "Spotify": "SPOT", "Microsoft": "MSFT", 
@@ -19,7 +35,6 @@ TICKERS_1 = {
     "GameStop": "GME", "Bitcoin": "BTC-USD", "Coinbase": "COIN", "Robinhood": "HOOD"
 }
 
-# CoreWeave a Circle odstraněny (soukromé firmy), LVT předpokládám jako Livento nebo překlep, zatím nechávám venku/příp. uprav.
 TICKERS_2 = {
     "Pepsi": "PEP", "Coca Cola": "KO", "Realty Income": "O", "Pfizer": "PFE", 
     "JPMorgan": "JPM", "Uber": "UBER", "ČEZ": "CEZ.PR", "Broadcom": "AVGO", 
@@ -28,139 +43,170 @@ TICKERS_2 = {
     "UNH": "UNH"
 }
 
-ALL_TICKERS = {**TICKERS_1, **TICKERS_2}
-
-# --- FUNKCE PRO NAČÍTÁNÍ DAT (S CACHE PRO RYCHLOST) ---
-@st.cache_data(ttl=300) # Obnoví data každých 5 minut
-def get_current_data(tickers_dict):
+# --- FUNKCE PRO NAČÍTÁNÍ DAT ---
+@st.cache_data(ttl=60) # Data držíme v paměti 60 vteřin pro plynulost, pak se stahují nová
+def get_portfolio_data(tickers_dict):
     data = []
     for name, ticker in tickers_dict.items():
         try:
             stock = yf.Ticker(ticker)
-            # Získání dnešních dat pro výpočet změny
-            hist = stock.history(period="2d")
+            hist = stock.history(period="5d") # Bereme 5 dní pro jistotu přes víkendy
+            
             if len(hist) >= 2:
-                prev_close = hist['Close'].iloc[0]
-                current = hist['Close'].iloc[1]
-                change_pct = ((current - prev_close) / prev_close) * 100
+                prev_close = hist['Close'].iloc[-2]
+                current = hist['Close'].iloc[-1]
+                change_val = current - prev_close
+                change_pct = (change_val / prev_close) * 100
             elif len(hist) == 1:
-                current = hist['Close'].iloc[0]
+                prev_close = current = hist['Close'].iloc[0]
+                change_val = 0.0
                 change_pct = 0.0
             else:
                 continue
                 
             data.append({
-                "Název": name,
+                "Akcie": name,
                 "Ticker": ticker,
-                "Cena": round(current, 2),
-                "Změna (%)": round(change_pct, 2)
+                "Cena ($)": current,
+                "Předchozí ($)": prev_close,
+                "Změna (%)": change_pct,
+                "Změna ($)": change_val
             })
         except Exception:
             continue
     return pd.DataFrame(data)
 
-# --- NAČTENÍ DAT ---
-with st.spinner('Načítám aktuální data z trhů (může trvat pár vteřin)...'):
-    df1 = get_current_data(TICKERS_1)
-    df2 = get_current_data(TICKERS_2)
-    df_all = pd.concat([df1, df2], ignore_index=True) if not df1.empty and not df2.empty else pd.DataFrame()
+# --- NAČTENÍ VŠECH DAT ---
+with st.spinner('Synchronizuji data z trhů...'):
+    df1 = get_portfolio_data(TICKERS_1)
+    df2 = get_portfolio_data(TICKERS_2)
 
-# --- HLAVNÍ METRIKY ---
+# --- TITULEK A DENNÍ NÁRŮST PORTFOLIA ---
 st.title("📈 Moje Investiční Portfolio")
 
-if not df_all.empty:
-    # Výpočty pro metriky
-    best_stock = df_all.loc[df_all['Změna (%)'].idxmax()]
-    avg_change = df_all['Změna (%)'].mean()
-    total_positions = len(df_all)
-
-    col1, col2, col3 = st.columns(3)
+# Výpočet portfolia (1 ks od každé akcie)
+if not df1.empty or not df2.empty:
+    df_all = pd.concat([df1, df2], ignore_index=True)
+    total_current_value = df_all["Cena ($)"].sum()
+    total_prev_value = df_all["Předchozí ($)"].sum()
     
-    with col1:
-        st.metric(label="🚀 Nejvíce rostoucí akcie", 
-                  value=f"{best_stock['Název']} ({best_stock['Ticker']})", 
-                  delta=f"{best_stock['Změna (%)']}%")
-    with col2:
-        st.metric(label="📊 Průměrný denní pohyb", 
-                  value=f"{avg_change:.2f} %", 
-                  delta=f"{avg_change:.2f}%")
-    with col3:
-        st.metric(label="💼 Celkový počet pozic", value=total_positions)
-else:
-    st.warning("Nepodařilo se načíst data pro metriky.")
+    portfolio_change_val = total_current_value - total_prev_value
+    portfolio_change_pct = (portfolio_change_val / total_prev_value) * 100 if total_prev_value > 0 else 0
+    
+    st.metric(
+        label="Denní nárůst portfolia (při držení 1 ks od každé pozice)",
+        value=f"{total_current_value:,.2f} USD",
+        delta=f"{portfolio_change_val:,.2f} USD ({portfolio_change_pct:+.2f} %)"
+    )
 
 st.markdown("---")
+st.markdown("### Kliknutím na řádek v tabulce se zobrazí detailní graf")
 
-# --- TABULKY ---
+# --- TABULKY S MOŽNOSTÍ KLIKNUTÍ ---
 col_tab1, col_tab2 = st.columns(2)
 
-def style_dataframe(df):
-    return df.style.map(
-        lambda x: 'color: green' if x > 0 else ('color: red' if x < 0 else ''),
+def style_df(df):
+    # Formátování tabulky pro hezký vzhled, nezobrazujeme technické sloupce
+    display_df = df[["Akcie", "Cena ($)", "Změna (%)"]].copy()
+    return display_df.style.map(
+        lambda x: 'color: #00ff00; font-weight: bold' if x > 0 else ('color: #ff0000; font-weight: bold' if x < 0 else ''),
         subset=['Změna (%)']
-    ).format({"Změna (%)": "{:+.2f} %", "Cena": "{:.2f}"})
+    ).format({"Cena ($)": "{:.2f}", "Změna (%)": "{:+.2f} %"})
+
+selected_ticker = None
+selected_name = None
 
 with col_tab1:
-    st.subheader("Tabulka 1: Růstové a Big Tech")
+    st.write("**Tabulka 1: Růstové a Big Tech**")
     if not df1.empty:
-        st.dataframe(style_dataframe(df1), use_container_width=True, hide_index=True)
+        # Nová funkce Streamlitu: on_select vrací kliknutý řádek
+        event1 = st.dataframe(
+            style_df(df1), 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        if len(event1.selection.rows) > 0:
+            row_idx = event1.selection.rows[0]
+            selected_ticker = df1.iloc[row_idx]["Ticker"]
+            selected_name = df1.iloc[row_idx]["Akcie"]
 
 with col_tab2:
-    st.subheader("Tabulka 2: Hodnotové a Ostatní")
+    st.write("**Tabulka 2: Hodnotové a Ostatní**")
     if not df2.empty:
-        st.dataframe(style_dataframe(df2), use_container_width=True, hide_index=True)
+        event2 = st.dataframe(
+            style_df(df2), 
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row"
+        )
+        if len(event2.selection.rows) > 0:
+            row_idx = event2.selection.rows[0]
+            selected_ticker = df2.iloc[row_idx]["Ticker"]
+            selected_name = df2.iloc[row_idx]["Akcie"]
 
 st.markdown("---")
 
-# --- INTERAKTIVNÍ GRAF ---
-st.subheader("📉 Detailní pohled na akcii")
-
-# Výběr akcie a času
-col_sel1, col_sel2 = st.columns([1, 1])
-with col_sel1:
-    # Vytvoření listu pro selectbox
-    all_names = list(ALL_TICKERS.keys())
-    selected_name = st.selectbox("Vyber akcii pro zobrazení grafu:", all_names)
-    selected_ticker = ALL_TICKERS[selected_name]
-
-with col_sel2:
-    # Mapování časových úseků Yahoo Finance
-    timeframes = {
-        "1 Den": "1d", "1 Týden": "5d", "1 Měsíc": "1mo", "3 Měsíce": "3mo", 
-        "Půl roku": "6mo", "Od začátku roku (YTD)": "ytd", "1 Rok": "1y", 
-        "2 Roky": "2y", "5 Let": "5y", "Celá historie": "max"
-    }
-    selected_tf_label = st.selectbox("Vyber časový horizont:", list(timeframes.keys()), index=2) # Default 1 měsíc
-    period = timeframes[selected_tf_label]
-
-# Vykreslení grafu
+# --- VYKRESLENÍ GRAFU PO KLIKNUTÍ ---
 if selected_ticker:
-    interval = "1m" if period == "1d" else ("1d" if period in ["5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y"] else "1wk")
+    st.subheader(f"📊 Detail: {selected_name}")
     
-    with st.spinner('Načítám graf...'):
+    # Výběr času hned nad grafem
+    timeframes = {
+        "1 Den": ("1d", "1m"), 
+        "1 Týden": ("5d", "15m"), 
+        "1 Měsíc": ("1mo", "1d"), 
+        "3 Měsíce": ("3mo", "1d"), 
+        "Půl roku": ("6mo", "1d"), 
+        "Od začátku roku (YTD)": ("ytd", "1d"), 
+        "1 Rok": ("1y", "1d"), 
+        "2 Roky": ("2y", "1wk"), 
+        "5 Let": ("5y", "1wk"), 
+        "Celá historie": ("max", "1mo")
+    }
+    
+    # Horizontální radio buttons pro rychlé přepínání
+    selected_tf_label = st.radio("Vyber časový úsek:", list(timeframes.keys()), horizontal=True)
+    period, interval = timeframes[selected_tf_label]
+    
+    with st.spinner(f'Načítám graf pro {selected_name}...'):
         history_data = yf.download(selected_ticker, period=period, interval=interval, progress=False)
         
         if not history_data.empty:
-            # Převedení MultiIndexu (pokud ho yf.download vrátí)
+            # Oprava pro pandas multiindex
             if isinstance(history_data.columns, pd.MultiIndex):
                 history_data.columns = history_data.columns.droplevel(1)
-                
+            
+            # Logika zelená/červená
+            first_price = history_data['Close'].iloc[0]
+            last_price = history_data['Close'].iloc[-1]
+            line_color = '#00ff00' if last_price >= first_price else '#ff0000'
+            
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=history_data.index, 
                 y=history_data['Close'],
                 mode='lines',
                 name=selected_name,
-                line=dict(color='#00ff00' if history_data['Close'].iloc[-1] >= history_data['Close'].iloc[0] else '#ff0000', width=2)
+                line=dict(color=line_color, width=3),
+                fill='tozeroy', # Lehké podbarvení pod křivkou pro lepší vizuál
+                fillcolor=f"rgba({0 if line_color=='#00ff00' else 255}, {255 if line_color=='#00ff00' else 0}, 0, 0.1)"
             ))
             
             fig.update_layout(
-                title=f"Vývoj ceny {selected_name} ({selected_ticker}) - {selected_tf_label}",
-                xaxis_title="Datum",
+                title=f"Vývoj ceny {selected_name} ({selected_ticker}) - Aktuální cena: {last_price:.2f}",
+                xaxis_title="Čas",
                 yaxis_title="Cena",
                 template="plotly_dark",
+                paper_bgcolor='rgba(0,0,0,0)', # Průhledné pozadí grafu, aby splynulo s černou
+                plot_bgcolor='rgba(0,0,0,0)',
                 hovermode="x unified"
             )
+            
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.error(f"Nepodařilo se stáhnout historická data pro {selected_name}.")
+            st.error("Nepodařilo se stáhnout historická data pro tento časový úsek.")
+else:
+    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení jejího detailního grafu.")
