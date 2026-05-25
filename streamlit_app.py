@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
+import time
+from datetime import datetime
 
 # --- NASTAVENÍ STRÁNKY ---
 st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="expanded")
@@ -9,32 +11,25 @@ st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_s
 # --- VYNUCENÍ ČERNÉHO POZADÍ A MAXIMÁLNÍ ČITELNOSTI ---
 st.markdown("""
 <style>
-    /* Základní pozadí */
     .stApp, .main, [data-testid="stSidebar"] {
         background-color: #000000 !important;
         color: #ffffff !important;
     }
-    
-    /* Vynucení čistě bílého a tučnějšího písma pro lepší čitelnost na slunci */
     .stMarkdown p, .stText, label, .stMetricLabel, [data-testid="stMetricValue"] {
         color: #ffffff !important;
         font-weight: 600 !important;
     }
-    
-    /* Zvětšení metrik */
     [data-testid="stMetricValue"] {
         font-size: 2.8rem !important;
         font-weight: 800 !important;
     }
-    
-    /* Tabulky */
     [data-testid="stDataFrame"] {
         background-color: #111111 !important;
     }
-    
-    /* Schování zbytečností */
     footer {visibility: hidden;}
     header {background: transparent !important;}
+    a {color: #1f77b4 !important; text-decoration: none;}
+    a:hover {text-decoration: underline;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -197,38 +192,35 @@ with col_tab2:
 
 st.markdown("---")
 
-# --- VYKRESLENÍ GRAFU, METRIK A SEZÓNNOSTI ---
+# --- VYKRESLENÍ GRAFU, METRIK, SEZÓNNOSTI A ZPRÁV ---
 if selected_ticker:
     st.subheader(f"📊 Detail: {selected_name} ({selected_ticker})")
     
     with st.spinner(f'Stahuji detaily a graf pro {selected_name}...'):
-        stock_info = yf.Ticker(selected_ticker).info
+        stock = yf.Ticker(selected_ticker)
+        stock_info = stock.info
+        
         pe_ratio = stock_info.get('trailingPE', 'N/A')
-        if isinstance(pe_ratio, (int, float)):
-            pe_ratio = round(pe_ratio, 2)
+        if isinstance(pe_ratio, (int, float)): pe_ratio = round(pe_ratio, 2)
             
         high_52 = stock_info.get('fiftyTwoWeekHigh', 'N/A')
         low_52 = stock_info.get('fiftyTwoWeekLow', 'N/A')
         
         m1, m2, m3 = st.columns(3)
-        aktuální_cena_z_tabulky = df_all.loc[df_all['Ticker'] == selected_ticker, 'Cena ($)'].values[0]
+        akcie_data = df_all.loc[df_all['Ticker'] == selected_ticker]
+        aktuální_cena_z_tabulky = akcie_data['Cena ($)'].values[0]
+        zmena_pct = akcie_data['Změna (%)'].values[0]
         
-        m1.metric("Aktuální cena", f"{aktuální_cena_z_tabulky:.2f}")
+        m1.metric("Aktuální cena", f"{aktuální_cena_z_tabulky:.2f}", delta=f"{zmena_pct:+.2f} %")
         m2.metric("P/E Ratio", pe_ratio)
         m3.metric("Min / Max (52 týdnů)", f"{low_52} / {high_52}" if low_52 != 'N/A' else "N/A")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
         timeframes = {
-            "1 Den": ("1d", "1m"), 
-            "1 Týden": ("5d", "15m"), 
-            "1 Měsíc": ("1mo", "1d"), 
-            "3 Měsíce": ("3mo", "1d"), 
-            "Půl roku": ("6mo", "1d"), 
-            "YTD": ("ytd", "1d"), 
-            "1 Rok": ("1y", "1d"), 
-            "2 Roky": ("2y", "1wk"), 
-            "5 Let": ("5y", "1wk"), 
+            "1 Den": ("1d", "1m"), "1 Týden": ("5d", "15m"), "1 Měsíc": ("1mo", "1d"), 
+            "3 Měsíce": ("3mo", "1d"), "Půl roku": ("6mo", "1d"), "YTD": ("ytd", "1d"), 
+            "1 Rok": ("1y", "1d"), "2 Roky": ("2y", "1wk"), "5 Let": ("5y", "1wk"), 
             "Celá historie": ("max", "1mo")
         }
         
@@ -272,7 +264,38 @@ if selected_ticker:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # --- SEZÓNNOST (Zabaleno do expanderu a roky otočeny) ---
+    # --- ZPRÁVY / ČLÁNKY (Filtrované na poslední 7 dní, bez překladu) ---
+    st.markdown("### 📰 Aktuální zprávy (za posledních 7 dní)")
+    try:
+        news_data = stock.news
+        if news_data:
+            current_time = time.time()
+            one_week_ago = current_time - (7 * 24 * 60 * 60)
+            
+            valid_news_found = False
+            for article in news_data:
+                pub_time = article.get('providerPublishTime', 0)
+                
+                if pub_time > one_week_ago:
+                    valid_news_found = True
+                    title = article.get('title', 'Bez názvu')
+                    link = article.get('link', '#')
+                    publisher = article.get('publisher', 'Neznámý zdroj')
+                    
+                    date_str = datetime.fromtimestamp(pub_time).strftime('%d.%m.%Y %H:%M')
+                    
+                    st.markdown(f"**[{title}]({link})**")
+                    st.caption(f"🗞️ {publisher} | 🕒 {date_str}")
+                    st.write("") 
+            
+            if not valid_news_found:
+                st.info("Za poslední týden nevyšly o této společnosti žádné významné články.")
+        else:
+            st.info("Pro tuto akcii nejsou dostupné žádné novinky.")
+    except Exception as e:
+        st.warning("Nepodařilo se načíst zprávy z Yahoo Finance.")
+
+    # --- SEZÓNNOST ---
     with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
         with st.spinner('Počítám sezónnostní matici...'):
             seas_data = yf.download(selected_ticker, period="10y", interval="1mo", progress=False)
@@ -291,23 +314,8 @@ if selected_ticker:
                 seas_data['Měsíc'] = seas_data.index.month
                 
                 pivot_df = seas_data.pivot(index='Rok', columns='Měsíc', values='Return')
-                
-                # OTOČENÍ TABULKY (Nejnovější rok nahoře)
                 pivot_df = pivot_df.sort_index(ascending=False)
                 
                 months_names = {
                     1: 'Leden', 2: 'Únor', 3: 'Březen', 4: 'Duben', 5: 'Květen', 6: 'Červen', 
-                    7: 'Červenec', 8: 'Srpen', 9: 'Září', 10: 'Říjen', 11: 'Listopad', 12: 'Prosinec'
-                }
-                pivot_df = pivot_df.rename(columns=months_names)
-                
-                def style_seasonality(val):
-                    if pd.isna(val):
-                        return ''
-                    color = '#00ff00' if val > 0 else ('#ff0000' if val < 0 else 'white')
-                    return f'color: {color}; font-weight: bold; font-size: 1.1rem;'
-                
-                styled_pivot = pivot_df.style.map(style_seasonality).format("{:+.2f} %", na_rep="-")
-                st.dataframe(styled_pivot, use_container_width=True)
-else:
-    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení jejího detailního grafu, P/E a sezónnosti.")
+                    7: 'Červenec', 8: 'Srpen', 9: 'Září', 10: 'Říjen', 11: 'Listopad', 12: 'Prosinec
