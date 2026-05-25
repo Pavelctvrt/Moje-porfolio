@@ -1,200 +1,166 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import datetime
-import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
 
-# 1. Nastavení stránky a kompletní černý režim pomocí CSS
-st.set_page_config(page_title="Moje Portfolio", layout="wide")
+# --- NASTAVENÍ STRÁNKY ---
+st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("""
-    <style>
-    /* Černé pozadí celé aplikace */
-    .stApp {
-        background-color: #0E1117;
-        color: #FAFAFA;
-    }
-    /* Tmavé boxy pro metriky */
-    .metric-box {
-        background-color: #1E232A;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #30363D;
-        text-align: center;
-        color: #FAFAFA;
-    }
-    .metric-box h3 { color: #8B949E !important; font-size: 16px; margin: 0; }
-    .metric-box h2 { color: #2ecc71 !important; font-size: 24px; margin: 5px 0 0 0; }
-    </style>
-""", unsafe_allow_html=True)
+# --- DEFINICE PORTFOLIA ---
+# Převod tvých názvů na oficiální Yahoo Finance tickery
+TICKERS_1 = {
+    "SXR8.DE": "SXR8.DE", "Gold": "GLD", "Meta": "META", "Tesla": "TSLA", 
+    "Netflix": "NFLX", "Google": "GOOGL", "Spotify": "SPOT", "Microsoft": "MSFT", 
+    "Amazon": "AMZN", "Nvidia": "NVDA", "Arm": "ARM", "AMD": "AMD", 
+    "Lam Research": "LRCX", "Applied Materials": "AMAT", "Super Micro": "SMCI", 
+    "Palantir": "PLTR", "Alibaba": "BABA", "McDonalds": "MCD", "Novo Nordisk": "NVO", 
+    "LVMH": "MC.PA", "CVS": "CVS", "Nike": "NKE", "Starbucks": "SBUX", 
+    "GameStop": "GME", "Bitcoin": "BTC-USD", "Coinbase": "COIN", "Robinhood": "HOOD"
+}
 
-st.title("💼 Řídicí věž mých financí")
-st.write("Vítejte ve svém investičním přehledu. Vyberte akcii níže pro zobrazení historického grafu.")
+# CoreWeave a Circle odstraněny (soukromé firmy), LVT předpokládám jako Livento nebo překlep, zatím nechávám venku/příp. uprav.
+TICKERS_2 = {
+    "Pepsi": "PEP", "Coca Cola": "KO", "Realty Income": "O", "Pfizer": "PFE", 
+    "JPMorgan": "JPM", "Uber": "UBER", "ČEZ": "CEZ.PR", "Broadcom": "AVGO", 
+    "Micron": "MU", "SOFI": "SOFI", "Intel": "INTC", "QCOM": "QCOM", 
+    "APP": "APP", "Serve Robotics": "SERV", "SPGI": "SPGI", "Dell": "DELL", 
+    "UNH": "UNH"
+}
 
-# --- DEFINICE TVÝCH AKTIV (Tickery upravené pro systém Stooq) ---
-seznam_tabulka_1 = [
-    {"Ticker": "SXR8.DE", "Název": "iShares Core S&P 500 ETF", "Segment": "ETF / Index"},
-    {"Ticker": "GOLD", "Název": "Zlato (Barrick Gold)", "Segment": "Komodity"},
-    {"Ticker": "META.US", "Název": "Meta Platforms (Facebook)", "Segment": "Big Tech"},
-    {"Ticker": "TSLA.US", "Název": "Tesla Inc.", "Segment": "Růst / Automotive"},
-    {"Ticker": "NFLX.US", "Název": "Netflix Inc.", "Segment": "Zábava / Služby"},
-    {"Ticker": "GOOGL.US", "Název": "Alphabet Inc. (Google)", "Segment": "Big Tech"},
-    {"Ticker": "SPOT.US", "Název": "Spotify Technology", "Segment": "Zábava / Služby"},
-    {"Ticker": "MSFT.US", "Název": "Microsoft Corp.", "Segment": "Big Tech"},
-    {"Ticker": "AMZN.US", "Název": "Amazon.com Inc.", "Segment": "Big Tech"},
-    {"Ticker": "NVDA.US", "Název": "NVIDIA Corp.", "Segment": "Polovodiče / AI"},
-    {"Ticker": "ARM.US", "Název": "ARM Holdings", "Segment": "Polovodiče / AI"},
-    {"Ticker": "AMD.US", "Název": "Advanced Micro Devices", "Segment": "Polovodiče / AI"},
-    {"Ticker": "LRCX.US", "Název": "Lam Research", "Segment": "Polovodiče / AI"},
-    {"Ticker": "AMAT.US", "Název": "Applied Materials", "Segment": "Polovodiče / AI"},
-    {"Ticker": "SMCI.US", "Název": "Super Micro Computer", "Segment": "Polovodiče / AI"},
-    {"Ticker": "PLTR.US", "Název": "Palantir Technologies", "Segment": "Růst / Software"},
-    {"Ticker": "BABA.US", "Název": "Alibaba Group", "Segment": "E-commerce"},
-    {"Ticker": "MCD.US", "Název": "McDonald's Corp.", "Segment": "Spotřební zboží"},
-    {"Ticker": "NVO.US", "Název": "Novo Nordisk", "Segment": "Zdravotnictví"},
-    {"Ticker": "MC.PA", "Název": "LVMH Moët Hennessy", "Segment": "Luxusní zboží"},
-    {"Ticker": "CVS.US", "Název": "CVS Health Corp.", "Segment": "Zdravotnictví"},
-    {"Ticker": "NKE.US", "Název": "Nike Inc.", "Segment": "Spotřební zboží"},
-    {"Ticker": "SBUX.US", "Název": "Starbucks Corp.", "Segment": "Spotřební zboží"},
-    {"Ticker": "GME.US", "Název": "GameStop Corp.", "Segment": "Spekulace"},
-    {"Ticker": "BTC-USD", "Název": "Bitcoin", "Segment": "Kryptoměny"},
-    {"Ticker": "COIN.US", "Název": "Coinbase Global", "Segment": "Kryptoměny / FinTech"},
-    {"Ticker": "HOOD.US", "Název": "Robinhood Markets", "Segment": "Kryptoměny / FinTech"}
-]
+ALL_TICKERS = {**TICKERS_1, **TICKERS_2}
 
-seznam_tabulka_2 = [
-    {"Ticker": "PEP.US", "Název": "PepsiCo, Inc.", "Segment": "Defenzivní spotřeba"},
-    {"Ticker": "KO.US", "Název": "Coca-Cola Company", "Segment": "Defenzivní spotřeba"},
-    {"Ticker": "O.US", "Název": "Reality Income Corp.", "Segment": "REIT / Nemovitosti"},
-    {"Ticker": "PFE.US", "Název": "Pfizer Inc.", "Segment": "Zdravotnictví"},
-    {"Ticker": "JPM.US", "Název": "JPMorgan Chase & Co.", "Segment": "Bankovnictví"},
-    {"Ticker": "UBER.US", "Název": "Uber Technologies", "Segment": "Služby / Doprava"},
-    {"Ticker": "CEZ.PR", "Název": "ČEZ, a.s.", "Segment": "Energetika / CZ"},
-    {"Ticker": "AVGO.US", "Název": "Broadcom Inc.", "Segment": "Polovodiče / AI"},
-    {"Ticker": "MU.US", "Název": "Micron Technology", "Segment": "Polovodiče / Paměti"},
-    {"Ticker": "INTC.US", "Název": "Intel Corp.", "Segment": "Polovodiče"},
-    {"Ticker": "QCOM.US", "Název": "Qualcomm Inc.", "Segment": "Polovodiče / Mobilní"},
-    {"Ticker": "APP.US", "Název": "AppLovin Corp.", "Segment": "Software / Reklama"},
-    {"Ticker": "SHV.US", "Název": "Serve Robotics Inc.", "Segment": "Robotika / AI"},
-    {"Ticker": "SPGI.US", "Název": "S&P Global Inc.", "Segment": "Finanční služby"},
-    {"Ticker": "DELL.US", "Název": "Dell Technologies", "Segment": "Infrastruktura / HW"},
-    {"Ticker": "UNH.US", "Název": "UnitedHealth Group", "Segment": "Zdravotnictví"}
-]
-
-# Sloučení pro potřeby vyhledávání a grafů
-vsechna_aktiva = seznam_tabulka_1 + seznam_tabulka_2
-
-# --- POMOCNÁ FUNKCE PRO STAŽENÍ HISTORIE PRO GRAF ---
-def stahni_historii_grafu(ticker):
-    try:
-        url = f"https://stooq.com/q/d/l/?s={ticker}&i=d"
-        df_csv = pd.read_csv(url, timeout=5)
-        if not df_csv.empty:
-            df_csv['Date'] = pd.to_datetime(df_csv['Date'])
-            # Filtrujeme posledních 30 dní
-            pred_mesicem = pd.Timestamp.now() - pd.Timedelta(days=30)
-            df_mesic = df_csv[df_csv['Date'] >= pred_mesicem]
-            return df_mesic
-    except Exception:
-        pass
-    return pd.DataFrame()
-
-# --- DYNAMICKÉ STAHOVÁNÍ AKTUÁLNÍCH CEN ---
-@st.cache_data(ttl=300)
-def stahni_aktualni_ceny(seznam_aktiv):
-    vysledky = []
-    for polozka in seznam_aktiv:
-        tkr = polozka["Ticker"]
+# --- FUNKCE PRO NAČÍTÁNÍ DAT (S CACHE PRO RYCHLOST) ---
+@st.cache_data(ttl=300) # Obnoví data každých 5 minut
+def get_current_data(tickers_dict):
+    data = []
+    for name, ticker in tickers_dict.items():
         try:
-            url = f"https://stooq.com/q/d/l/?s={tkr}&i=d"
-            df_csv = pd.read_csv(url, timeout=3)
-            if not df_csv.empty and len(df_csv) >= 2:
-                aktualni = df_csv['Close'].iloc[-1]
-                predchozi = df_csv['Close'].iloc[-2]
-                zmena = ((aktualni - predchozi) / predchozi) * 100
-                vysledky.append({
-                    "Ticker": tkr.replace(".US", ""),
-                    "Název": polozka["Název"],
-                    "Segment": polozka["Segment"],
-                    "Aktuální cena": round(aktualni, 2),
-                    "Změna (%)": round(zmena, 2),
-                    "Full_Ticker": tkr
-                })
+            stock = yf.Ticker(ticker)
+            # Získání dnešních dat pro výpočet změny
+            hist = stock.history(period="2d")
+            if len(hist) >= 2:
+                prev_close = hist['Close'].iloc[0]
+                current = hist['Close'].iloc[1]
+                change_pct = ((current - prev_close) / prev_close) * 100
+            elif len(hist) == 1:
+                current = hist['Close'].iloc[0]
+                change_pct = 0.0
+            else:
                 continue
+                
+            data.append({
+                "Název": name,
+                "Ticker": ticker,
+                "Cena": round(current, 2),
+                "Změna (%)": round(change_pct, 2)
+            })
         except Exception:
-            pass
-        
-        # Záložní fixní data, aby aplikace běžela i při výpadku/svátku
-        vysledky.append({
-            "Ticker": tkr.replace(".US", ""),
-            "Název": polozka["Název"],
-            "Segment": polozka["Segment"],
-            "Aktuální cena": 150.0 if tkr != "BTC-USD" else 67250.0,
-            "Změna (%)": 0.0,
-            "Full_Ticker": tkr
-        })
-    return pd.DataFrame(vysledky)
+            continue
+    return pd.DataFrame(data)
 
-df1 = stahni_aktualni_ceny(seznam_tabulka_1)
-df2 = stahni_aktualni_ceny(seznam_tabulka_2)
-df_vse = pd.concat([df1, df2], ignore_index=True)
+# --- NAČTENÍ DAT ---
+with st.spinner('Načítám aktuální data z trhů (může trvat pár vteřin)...'):
+    df1 = get_current_data(TICKERS_1)
+    df2 = get_current_data(TICKERS_2)
+    df_all = pd.concat([df1, df2], ignore_index=True) if not df1.empty and not df2.empty else pd.DataFrame()
 
-# --- 3. DYNAMICKÁ OKÉNKA (METRIKY) ---
-col1, col2, col3 = st.columns(3)
-with col1:
-    skokan = df_vse.loc[df_vse['Změna (%)'].idxmax()]
-    st.markdown(f"<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>{skokan['Ticker']} (+{skokan['Změna (%)']}%)</h2></div>", unsafe_allow_html=True)
-with col2:
-    prumerny_pohyb = round(df_vse['Změna (%)'].mean(), 2)
-    barva_pohybu = "#2ecc71" if prumerny_pohyb >= 0 else "#e74c3c"
-    st.markdown(f"<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2 style='color: {barva_pohybu} !important;'>{prumerny_pohyb}%</h2></div>", unsafe_allow_html=True)
-with col3:
-    st.markdown(f"<div class='metric-box'><h3>Celkem sledovaných aktiv</h3><h2>{len(df_vse)} pozic</h2></div>", unsafe_allow_html=True)
+# --- HLAVNÍ METRIKY ---
+st.title("📈 Moje Investiční Portfolio")
 
-st.markdown("---")
+if not df_all.empty:
+    # Výpočty pro metriky
+    best_stock = df_all.loc[df_all['Změna (%)'].idxmax()]
+    avg_change = df_all['Změna (%)'].mean()
+    total_positions = len(df_all)
 
-# --- ZOBRAZENÍ TABULEK ---
-st.header("1️⃣ Hlavní investiční pozice")
-st.dataframe(df1.drop(columns=['Full_Ticker']).style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3), use_container_width=True, hide_index=True)
-
-st.markdown("---")
-
-st.header("2️⃣ Druhá skupina / Sledované tituly")
-st.dataframe(df2.drop(columns=['Full_Ticker']).style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3), use_container_width=True, hide_index=True)
-
-st.markdown("---")
-
-# --- INTERAKTIVNÍ SEKCE PRO ROZBALENÍ GRAFU ---
-st.header("📈 Detailní interaktivní grafy")
-st.write("Vyber si ze seznamu jakoukoliv akcii nebo krypto a okamžitě se ti vykreslí graf vývoje za posledních 30 dní:")
-
-# Vytvoření přehledného seznamu pro výběr akcie (Ticker - Název)
-seznam_pro_vyber = [f"{row['Ticker']} - {row['Název']}" for _, row in df_vse.iterrows()]
-vybrana_akcie_text = st.selectbox("🔍 Zvol akcii pro zobrazení grafu:", seznam_pro_vyber, index=24) # Index 24 přednavolí Bitcoin
-
-# Získání čistého tickeru pro vyhledání historie
-vybrany_ticker_cisty = vybrana_akcie_text.split(" - ")[0]
-vybrany_row = df_vse[df_vse['Ticker'] == vybrany_ticker_cisty].iloc[0]
-full_ticker = vybrany_row['Full_Ticker']
-
-# Načtení historie a vykreslení grafu
-with st.spinner(f"Načítám graf pro {vybrany_ticker_cisty}..."):
-    df_historie = stahni_historii_grafu(full_ticker)
+    col1, col2, col3 = st.columns(3)
     
-    if not df_historie.empty:
-        fig = px.line(
-            df_historie, 
-            x='Date', 
-            y='Close', 
-            title=f"Vývoj ceny aktiv: {vybrana_akcie_text} (Posledních 30 dní)",
-            labels={'Date': 'Datum', 'Close': 'Cena (USD / EUR / CZK)'}
-        )
-        # Stylování grafu do tmavého režimu
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1E232A",
-            plot_bgcolor="#1E232A",
-            font_color="#FAFAFA"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning(f"Graf pro {vybrany_ticker_cisty} se nepodařilo načíst z trhů. Zkuste to prosím za malou chvíli.")
+    with col1:
+        st.metric(label="🚀 Nejvíce rostoucí akcie", 
+                  value=f"{best_stock['Název']} ({best_stock['Ticker']})", 
+                  delta=f"{best_stock['Změna (%)']}%")
+    with col2:
+        st.metric(label="📊 Průměrný denní pohyb", 
+                  value=f"{avg_change:.2f} %", 
+                  delta=f"{avg_change:.2f}%")
+    with col3:
+        st.metric(label="💼 Celkový počet pozic", value=total_positions)
+else:
+    st.warning("Nepodařilo se načíst data pro metriky.")
+
+st.markdown("---")
+
+# --- TABULKY ---
+col_tab1, col_tab2 = st.columns(2)
+
+def style_dataframe(df):
+    return df.style.map(
+        lambda x: 'color: green' if x > 0 else ('color: red' if x < 0 else ''),
+        subset=['Změna (%)']
+    ).format({"Změna (%)": "{:+.2f} %", "Cena": "{:.2f}"})
+
+with col_tab1:
+    st.subheader("Tabulka 1: Růstové a Big Tech")
+    if not df1.empty:
+        st.dataframe(style_dataframe(df1), use_container_width=True, hide_index=True)
+
+with col_tab2:
+    st.subheader("Tabulka 2: Hodnotové a Ostatní")
+    if not df2.empty:
+        st.dataframe(style_dataframe(df2), use_container_width=True, hide_index=True)
+
+st.markdown("---")
+
+# --- INTERAKTIVNÍ GRAF ---
+st.subheader("📉 Detailní pohled na akcii")
+
+# Výběr akcie a času
+col_sel1, col_sel2 = st.columns([1, 1])
+with col_sel1:
+    # Vytvoření listu pro selectbox
+    all_names = list(ALL_TICKERS.keys())
+    selected_name = st.selectbox("Vyber akcii pro zobrazení grafu:", all_names)
+    selected_ticker = ALL_TICKERS[selected_name]
+
+with col_sel2:
+    # Mapování časových úseků Yahoo Finance
+    timeframes = {
+        "1 Den": "1d", "1 Týden": "5d", "1 Měsíc": "1mo", "3 Měsíce": "3mo", 
+        "Půl roku": "6mo", "Od začátku roku (YTD)": "ytd", "1 Rok": "1y", 
+        "2 Roky": "2y", "5 Let": "5y", "Celá historie": "max"
+    }
+    selected_tf_label = st.selectbox("Vyber časový horizont:", list(timeframes.keys()), index=2) # Default 1 měsíc
+    period = timeframes[selected_tf_label]
+
+# Vykreslení grafu
+if selected_ticker:
+    interval = "1m" if period == "1d" else ("1d" if period in ["5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y"] else "1wk")
+    
+    with st.spinner('Načítám graf...'):
+        history_data = yf.download(selected_ticker, period=period, interval=interval, progress=False)
+        
+        if not history_data.empty:
+            # Převedení MultiIndexu (pokud ho yf.download vrátí)
+            if isinstance(history_data.columns, pd.MultiIndex):
+                history_data.columns = history_data.columns.droplevel(1)
+                
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=history_data.index, 
+                y=history_data['Close'],
+                mode='lines',
+                name=selected_name,
+                line=dict(color='#00ff00' if history_data['Close'].iloc[-1] >= history_data['Close'].iloc[0] else '#ff0000', width=2)
+            ))
+            
+            fig.update_layout(
+                title=f"Vývoj ceny {selected_name} ({selected_ticker}) - {selected_tf_label}",
+                xaxis_title="Datum",
+                yaxis_title="Cena",
+                template="plotly_dark",
+                hovermode="x unified"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error(f"Nepodařilo se stáhnout historická data pro {selected_name}.")
