@@ -18,9 +18,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("💼 Řídicí věž mých financí")
-st.write("Vítejte ve svém investičním přehledu. Data jsou bezpečně stahována přes záložní server Stooq.")
+st.write("Vítejte ve svém investičním přehledu. Dnes je v USA svátek, zobrazujeme poslední uzavřené kurzy.")
 
-# 2. Kompletní seznam tvých 40 akcií
+# Kompletní seznam 40 akcií
 akcie_data = [
     {"Ticker": "AAPL", "Název": "Apple Inc.", "Sektor": "Technologie"},
     {"Ticker": "MSFT", "Název": "Microsoft Corp.", "Sektor": "Technologie"},
@@ -64,21 +64,19 @@ akcie_data = [
     {"Ticker": "GS", "Název": "Goldman Sachs Group", "Sektor": "Finanční služby"}
 ]
 
-@st.cache_data(ttl=600)
-def stahni_ceny_stooq():
+@st.cache_data(ttl=3600)
+def stahni_data_svatek():
     vysledky = []
-    progres = st.progress(0, text="Stahuji kurzy ze záložního serveru...")
-    
-    for idx, položka in enumerate(akcie_data):
+    for položka in akcie_data:
         tkr = položka["Ticker"]
-        # Stooq používá pro US akcie příponu .US (např. AAPL.US), u BRK-B nahradíme pomlčku tečkou
         stooq_tkr = tkr.replace("-", ".").upper() + ".US"
-        
         try:
+            # Přidáme timeout=5, aby se kód u žádné akcie nezasekl, když neodpovídá
             url = f"https://stooq.com/q/d/l/?s={stooq_tkr}&i=d"
-            df_csv = pd.read_csv(url)
+            df_csv = pd.read_csv(url, timeout=5)
             
             if not df_csv.empty and len(df_csv) >= 2:
+                # Vezmeme poslední dva dostupné dny v historii (patek a ctvrtek)
                 aktualni = df_csv['Close'].iloc[-1]
                 predchozi = df_csv['Close'].iloc[-2]
                 zmena = ((aktualni - predchozi) / predchozi) * 100
@@ -87,33 +85,29 @@ def stahni_ceny_stooq():
                     "Ticker": tkr,
                     "Název společnosti": položka["Název"],
                     "Sektor": položka["Sektor"],
-                    "Aktuální cena (USD)": round(aktualni, 2),
-                    "Denní změna (%)": round(zmena, 2)
+                    "Poslední cena (USD)": round(aktualni, 2),
+                    "Poslední změna (%)": round(zmena, 2)
                 })
         except Exception:
             pass
-        progres.progress((idx + 1) / len(akcie_data))
-        
-    progres.empty()
     return pd.DataFrame(vysledky)
 
-df = stahni_ceny_stooq()
+df = stahni_data_svatek()
 
-# 4. Vykreslení webu
 if not df.empty:
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(f"<div class='metric-box'><h3>Sledovaných pozic</h3><h2>{len(df)} / 40</h2></div>", unsafe_allow_html=True)
     with col2:
-        skokan = df.loc[df['Denní změna (%)'].idxmax()]
-        st.markdown(f"<div class='metric-box'><h3>Dnešní skokan 🚀</h3><h2>{skokan['Ticker']} ({skokan['Denní změna (%)']}%)</h2></div>", unsafe_allow_html=True)
+        skokan = df.loc[df['Poslední změna (%)'].idxmax()]
+        st.markdown(f"<div class='metric-box'><h3>Poslední skokan 🚀</h3><h2>{skokan['Ticker']} ({skokan['Poslední změna (%)']}%)</h2></div>", unsafe_allow_html=True)
     with col3:
-        st.markdown("<div class='metric-box'><h3>Zdroj dat</h3><h2>Záložní Feed (Stooq)</h2></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-box'><h3>Stav trhů</h3><h2>🔒 USA Svátek</h2></div>", unsafe_allow_html=True)
         
     st.markdown("---")
     
-    st.subheader("📋 Kompletní přehled tvých 40 akciových titulů")
-    vyhledavani = st.text_input("🔍 Rychlé vyhledávání akcie (napiš Ticker nebo název):")
+    st.subheader("📋 Přehled portfolia (Data z posledního obchodního dne)")
+    vyhledavani = st.text_input("🔍 Rychlé vyhledávání akcie:")
     
     if vyhledavani:
         df_filtrovane = df[df['Ticker'].str.contains(vyhledavani, case=False) | df['Název společnosti'].str.contains(vyhledavani, case=False)]
@@ -121,9 +115,12 @@ if not df.empty:
         df_filtrovane = df
         
     st.dataframe(
-        df_filtrovane.style.background_gradient(subset=['Denní změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3),
+        df_filtrovane.style.background_gradient(subset=['Poslední změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3),
         use_container_width=True,
         hide_index=True
     )
 else:
-    st.error("Nepodařilo se navázat spojení ani se záložním serverem. Zkuste vymazat cache nebo stránku obnovit.")
+    st.warning("Systém Stooq dnes kvůli svátku neodpovídá. Zkuste to prosím znovu za chvíli tlačítkem níže.")
+    if st.button("🔄 Načíst znovu"):
+        st.cache_data.clear()
+        st.rerun()
