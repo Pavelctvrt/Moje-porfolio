@@ -31,8 +31,10 @@ st.markdown("""
     }
     footer {visibility: hidden;}
     header {background: transparent !important;}
-    a {color: #1f77b4 !important; text-decoration: none;}
-    a:hover {text-decoration: underline;}
+    
+    /* OPRAVA ČITELNOSTI ODKAZŮ (Zářivě světle modrá a tučnější písmo) */
+    a {color: #66b3ff !important; text-decoration: none; font-weight: 700 !important;}
+    a:hover {text-decoration: underline; color: #99ccff !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -202,7 +204,6 @@ if selected_ticker:
     with st.spinner(f'Stahuji detaily a graf pro {selected_name}...'):
         stock = yf.Ticker(selected_ticker)
         
-        # Obrnění proti limitům Yahoo
         pe_ratio = 'N/A'
         high_52 = 'N/A'
         low_52 = 'N/A'
@@ -270,89 +271,3 @@ if selected_ticker:
                 
                 fig.update_layout(
                     xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark",
-                    yaxis=dict(range=[y_min, y_max]),
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
-                    font=dict(color="white", size=14)
-                )
-                st.plotly_chart(fig, use_container_width=True)
-        except Exception:
-            st.error("Nepodařilo se stáhnout data pro graf (limit API). Zkuste to za chvíli.")
-
-    # --- ZPRÁVY / ČLÁNKY (Přes Google News V ČEŠTINĚ) ---
-    st.markdown("### 📰 Aktuální zprávy (v češtině)")
-    try:
-        # Sestavení dotazu pro český Google (např. "Tesla akcie" nebo "TSLA")
-        query = f'"{selected_name}" akcie OR "{selected_ticker}"'
-        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=cs&gl=CZ&ceid=CZ:cs"
-        
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        response = urllib.request.urlopen(req, timeout=5)
-        root = ET.fromstring(response.read())
-        
-        valid_news_found = False
-        for item in root.findall('./channel/item')[:7]:
-            valid_news_found = True
-            title = item.find('title').text
-            link = item.find('link').text
-            
-            source_elem = item.find('source')
-            publisher = source_elem.text if source_elem is not None else "Google Zprávy"
-            
-            pub_date = item.find('pubDate').text
-            try:
-                # Oříznutí " GMT" a převedení do hezčího českého formátu
-                parsed_date = datetime.strptime(pub_date[:-4], "%a, %d %b %Y %H:%M:%S")
-                date_str = parsed_date.strftime("%d.%m.%Y %H:%M")
-            except:
-                # Kdyby selhal formát času, vypíše se originální
-                date_str = pub_date
-
-            st.markdown(f"**[{title}]({link})**")
-            st.caption(f"🗞️ {publisher} | 🕒 {date_str}")
-            st.write("")
-            
-        if not valid_news_found:
-            st.info("Momentálně pro tuto společnost nejsou k dispozici žádné články v češtině.")
-    except Exception as e:
-        st.warning("Nepodařilo se načíst zprávy z Google News. Zkuste to později.")
-
-    # --- SEZÓNNOST ---
-    with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
-        with st.spinner('Počítám sezónnostní matici...'):
-            try:
-                seas_data = yf.download(selected_ticker, period="10y", interval="1mo", progress=False)
-                
-                if not seas_data.empty:
-                    if isinstance(seas_data.columns, pd.MultiIndex):
-                        seas_data.columns = seas_data.columns.droplevel(1)
-                        
-                    seas_data = seas_data.dropna(subset=['Close'])
-                    seas_data = seas_data[seas_data['Close'] > 0]
-                    
-                    seas_data['Return'] = seas_data['Close'].pct_change() * 100
-                    seas_data = seas_data.dropna(subset=['Return'])
-                    
-                    seas_data['Rok'] = seas_data.index.year
-                    seas_data['Měsíc'] = seas_data.index.month
-                    
-                    pivot_df = seas_data.pivot(index='Rok', columns='Měsíc', values='Return')
-                    pivot_df = pivot_df.sort_index(ascending=False)
-                    
-                    months_names = {
-                        1: 'Leden', 2: 'Únor', 3: 'Březen', 4: 'Duben', 5: 'Květen', 6: 'Červen', 
-                        7: 'Červenec', 8: 'Srpen', 9: 'Září', 10: 'Říjen', 11: 'Listopad', 12: 'Prosinec'
-                    }
-                    pivot_df = pivot_df.rename(columns=months_names)
-                    
-                    def style_seasonality(val):
-                        if pd.isna(val):
-                            return ''
-                        color = '#00ff00' if val > 0 else ('#ff0000' if val < 0 else 'white')
-                        return f'color: {color}; font-weight: bold; font-size: 1.1rem;'
-                    
-                    styled_pivot = pivot_df.style.map(style_seasonality).format("{:+.2f} %", na_rep="-")
-                    st.dataframe(styled_pivot, use_container_width=True)
-            except Exception:
-                st.error("Nepodařilo se načíst data pro sezónnost (limit API).")
-else:
-    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení jejího detailního grafu, novinek a sezónnosti.")
