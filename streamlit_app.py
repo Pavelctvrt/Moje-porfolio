@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import datetime
 
 # 1. Nastavení stránky
 st.set_page_config(page_title="Moje Portfolio", layout="wide")
@@ -19,9 +18,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("💼 Řídicí věž mých financí")
-st.write("Vítejte ve svém investičním přehledu. Data jsou stahována přímo z finančních serverů.")
+st.write("Vítejte ve svém investičním přehledu. Data jsou bezpečně stahována přes záložní server Stooq.")
 
-# 2. Kompletní seznam tvých 40 akcií s názvy a sektory (bez nutnosti volat yfinance.info)
+# 2. Kompletní seznam tvých 40 akcií
 akcie_data = [
     {"Ticker": "AAPL", "Název": "Apple Inc.", "Sektor": "Technologie"},
     {"Ticker": "MSFT", "Název": "Microsoft Corp.", "Sektor": "Technologie"},
@@ -66,19 +65,17 @@ akcie_data = [
 ]
 
 @st.cache_data(ttl=600)
-def stahni_ceny_přimo():
+def stahni_ceny_stooq():
     vysledky = []
-    # Spočítáme unixový čas pro stažení dat za poslední týden
-    dnes = int(datetime.datetime.now().timestamp())
-    tyden_zpatky = dnes - (7 * 24 * 60 * 60)
-    
-    progres = st.progress(0, text="Stahuji live data z trhů...")
+    progres = st.progress(0, text="Stahuji kurzy ze záložního serveru...")
     
     for idx, položka in enumerate(akcie_data):
         tkr = položka["Ticker"]
+        # Stooq používá pro US akcie příponu .US (např. AAPL.US), u BRK-B nahradíme pomlčku tečkou
+        stooq_tkr = tkr.replace("-", ".").upper() + ".US"
+        
         try:
-            # Přímý odkaz na CSV stažení z Yahoo Finance bez použití nespolehlivé knihovny
-            url = f"https://query1.finance.yahoo.com/v7/finance/download/{tkr}?period1={tyden_zpatky}&period2={dnes}&interval=1d&events=history&includeAdjustedClose=true"
+            url = f"https://stooq.com/q/d/l/?s={stooq_tkr}&i=d"
             df_csv = pd.read_csv(url)
             
             if not df_csv.empty and len(df_csv) >= 2:
@@ -100,7 +97,7 @@ def stahni_ceny_přimo():
     progres.empty()
     return pd.DataFrame(vysledky)
 
-df = stahni_ceny_přimo()
+df = stahni_ceny_stooq()
 
 # 4. Vykreslení webu
 if not df.empty:
@@ -111,11 +108,10 @@ if not df.empty:
         skokan = df.loc[df['Denní změna (%)'].idxmax()]
         st.markdown(f"<div class='metric-box'><h3>Dnešní skokan 🚀</h3><h2>{skokan['Ticker']} ({skokan['Denní změna (%)']}%)</h2></div>", unsafe_allow_html=True)
     with col3:
-        st.markdown("<div class='metric-box'><h3>Zdroj dat</h3><h2>Live Yahoo Stream</h2></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-box'><h3>Zdroj dat</h3><h2>Záložní Feed (Stooq)</h2></div>", unsafe_allow_html=True)
         
     st.markdown("---")
     
-    # Přehledná tabulka
     st.subheader("📋 Kompletní přehled tvých 40 akciových titulů")
     vyhledavani = st.text_input("🔍 Rychlé vyhledávání akcie (napiš Ticker nebo název):")
     
@@ -130,7 +126,4 @@ if not df.empty:
         hide_index=True
     )
 else:
-    st.error("Servery s daty jsou momentálně přetížené. Zmáčkněte prosím tlačítko níže pro nový pokus.")
-    if st.button("🔄 Zkusit načíst data znovu"):
-        st.cache_data.clear()
-        st.rerun()
+    st.error("Nepodařilo se navázat spojení ani se záložním serverem. Zkuste vymazat cache nebo stránku obnovit.")
