@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import datetime
+import plotly.express as px
 
 # 1. Nastavení stránky a kompletní černý režim pomocí CSS
 st.set_page_config(page_title="Moje Portfolio", layout="wide")
@@ -26,10 +28,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("💼 Řídicí věž mých financí")
-st.write("Vítejte ve svém investičním přehledu. Data jsou live stahována z finančních trhů.")
+st.write("Vítejte ve svém investičním přehledu. Vyberte akcii níže pro zobrazení historického grafu.")
 
 # --- DEFINICE TVÝCH AKTIV (Tickery upravené pro systém Stooq) ---
-
 seznam_tabulka_1 = [
     {"Ticker": "SXR8.DE", "Název": "iShares Core S&P 500 ETF", "Segment": "ETF / Index"},
     {"Ticker": "GOLD", "Název": "Zlato (Barrick Gold)", "Segment": "Komodity"},
@@ -79,99 +80,121 @@ seznam_tabulka_2 = [
     {"Ticker": "UNH.US", "Název": "UnitedHealth Group", "Segment": "Zdravotnictví"}
 ]
 
-# --- FUNKCE PRO ŽIVÉ STAHOVÁNÍ DAT ---
-@st.cache_data(ttl=600)
-def stahni_data_portfolia(seznam_aktiv):
+# Sloučení pro potřeby vyhledávání a grafů
+vsechna_aktiva = seznam_tabulka_1 + seznam_tabulka_2
+
+# --- POMOCNÁ FUNKCE PRO STAŽENÍ HISTORIE PRO GRAF ---
+def stahni_historii_grafu(ticker):
+    try:
+        url = f"https://stooq.com/q/d/l/?s={ticker}&i=d"
+        df_csv = pd.read_csv(url, timeout=5)
+        if not df_csv.empty:
+            df_csv['Date'] = pd.to_datetime(df_csv['Date'])
+            # Filtrujeme posledních 30 dní
+            pred_mesicem = pd.Timestamp.now() - pd.Timedelta(days=30)
+            df_mesic = df_csv[df_csv['Date'] >= pred_mesicem]
+            return df_mesic
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+# --- DYNAMICKÉ STAHOVÁNÍ AKTUÁLNÍCH CEN ---
+@st.cache_data(ttl=300)
+def stahni_aktualni_ceny(seznam_aktiv):
     vysledky = []
     for polozka in seznam_aktiv:
         tkr = polozka["Ticker"]
         try:
-            # Volání API serveru Stooq
             url = f"https://stooq.com/q/d/l/?s={tkr}&i=d"
-            df_csv = pd.read_csv(url, timeout=4)
-            
+            df_csv = pd.read_csv(url, timeout=3)
             if not df_csv.empty and len(df_csv) >= 2:
                 aktualni = df_csv['Close'].iloc[-1]
                 predchozi = df_csv['Close'].iloc[-2]
                 zmena = ((aktualni - predchozi) / predchozi) * 100
-                
                 vysledky.append({
                     "Ticker": tkr.replace(".US", ""),
                     "Název": polozka["Název"],
                     "Segment": polozka["Segment"],
                     "Aktuální cena": round(aktualni, 2),
-                    "Změna (%)": round(zmena, 2)
+                    "Změna (%)": round(zmena, 2),
+                    "Full_Ticker": tkr
                 })
+                continue
         except Exception:
-            # Záložní pseudo data, pokud server v danou chvíli (např. o svátku) neodpovídá
-            vysledky.append({
-                "Ticker": tkr.replace(".US", ""),
-                "Název": polozka["Název"],
-                "Segment": polozka["Segment"],
-                "Aktuální cena": 100.0,
-                "Změna (%)": 0.0
-            })
+            pass
+        
+        # Záložní fixní data, aby aplikace běžela i při výpadku/svátku
+        vysledky.append({
+            "Ticker": tkr.replace(".US", ""),
+            "Název": polozka["Název"],
+            "Segment": polozka["Segment"],
+            "Aktuální cena": 150.0 if tkr != "BTC-USD" else 67250.0,
+            "Změna (%)": 0.0,
+            "Full_Ticker": tkr
+        })
     return pd.DataFrame(vysledky)
 
-# Načtení dat pro obě tabulky
-df1 = stahni_data_portfolia(seznam_tabulka_1)
-df2 = stahni_data_portfolia(seznam_tabulka_2)
-
-# Spojení dat pro výpočet globálních statistik portfolia
+df1 = stahni_aktualni_ceny(seznam_tabulka_1)
+df2 = stahni_aktualni_ceny(seznam_tabulka_2)
 df_vse = pd.concat([df1, df2], ignore_index=True)
 
-# --- 3. DYNAMICKÁ OKÉNKA NAHOŘE (METRIKY) ---
+# --- 3. DYNAMICKÁ OKÉNKA (METRIKY) ---
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    # Nejvíce rostoucí akcie za dnešní den z tvých akcií
-    if not df_vse.empty:
-        skokan = df_vse.loc[df_vse['Změna (%)'].idxmax()]
-        st.markdown(f"<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>{skokan['Ticker']} (+{skokan['Změna (%)']}%)</h2></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>Žádná data</h2></div>", unsafe_allow_html=True)
-
+    skokan = df_vse.loc[df_vse['Změna (%)'].idxmax()]
+    st.markdown(f"<div class='metric-box'><h3>Dnešní skokan portfolia 🚀</h3><h2>{skokan['Ticker']} (+{skokan['Změna (%)']}%)</h2></div>", unsafe_allow_html=True)
 with col2:
-    # Průměrný pohyb celého tvého trhu za dnešní den
-    if not df_vse.empty:
-        prumerny_pohyb = round(df_vse['Změna (%)'].mean(), 2)
-        barva_pohybu = "#2ecc71" if prumerny_pohyb >= 0 else "#e74c3c"
-        st.markdown(f"<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2 style='color: {barva_pohybu} !important;'>{prumerny_pohyb}%</h2></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2>0.0%</h2></div>", unsafe_allow_html=True)
-
+    prumerny_pohyb = round(df_vse['Změna (%)'].mean(), 2)
+    barva_pohybu = "#2ecc71" if prumerny_pohyb >= 0 else "#e74c3c"
+    st.markdown(f"<div class='metric-box'><h3>Průměrný denní vývoj</h3><h2 style='color: {barva_pohybu} !important;'>{prumerny_pohyb}%</h2></div>", unsafe_allow_html=True)
 with col3:
     st.markdown(f"<div class='metric-box'><h3>Celkem sledovaných aktiv</h3><h2>{len(df_vse)} pozic</h2></div>", unsafe_allow_html=True)
-    
+
 st.markdown("---")
-
-# Společný vyhledávací filtr pro obě tabulky
-vyhledavani = st.text_input("🔍 Rychlý filtr (napiš Ticker, název nebo segment pro vyhledání napříč tabulkami):")
-
-def filtruj_df(df, dotaz):
-    if dotaz:
-        return df[df['Ticker'].str.contains(dotaz, case=False) | df['Název'].str.contains(dotaz, case=False) | df['Segment'].str.contains(dotaz, case=False)]
-    return df
-
-df1_filtrovane = filtruj_df(df1, vyhledavani)
-df2_filtrovane = filtruj_df(df2, vyhledavani)
 
 # --- ZOBRAZENÍ TABULEK ---
-
-# TABULKA 1
 st.header("1️⃣ Hlavní investiční pozice")
-try:
-    styler1 = df1_filtrovane.style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3)
-    st.dataframe(styler1, use_container_width=True, hide_index=True)
-except Exception:
-    st.dataframe(df1_filtrovane, use_container_width=True, hide_index=True)
+st.dataframe(df1.drop(columns=['Full_Ticker']).style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3), use_container_width=True, hide_index=True)
 
 st.markdown("---")
 
-# TABULKA 2
 st.header("2️⃣ Druhá skupina / Sledované tituly")
-try:
-    styler2 = df2_filtrovane.style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3)
-    st.dataframe(styler2, use_container_width=True, hide_index=True)
-except Exception:
-    st.dataframe(df2_filtrovane, use_container_width=True, hide_index=True)
+st.dataframe(df2.drop(columns=['Full_Ticker']).style.background_gradient(subset=['Změna (%)'], cmap='RdYlGn', vmin=-3, vmax=3), use_container_width=True, hide_index=True)
+
+st.markdown("---")
+
+# --- INTERAKTIVNÍ SEKCE PRO ROZBALENÍ GRAFU ---
+st.header("📈 Detailní interaktivní grafy")
+st.write("Vyber si ze seznamu jakoukoliv akcii nebo krypto a okamžitě se ti vykreslí graf vývoje za posledních 30 dní:")
+
+# Vytvoření přehledného seznamu pro výběr akcie (Ticker - Název)
+seznam_pro_vyber = [f"{row['Ticker']} - {row['Název']}" for _, row in df_vse.iterrows()]
+vybrana_akcie_text = st.selectbox("🔍 Zvol akcii pro zobrazení grafu:", seznam_pro_vyber, index=24) # Index 24 přednavolí Bitcoin
+
+# Získání čistého tickeru pro vyhledání historie
+vybrany_ticker_cisty = vybrana_akcie_text.split(" - ")[0]
+vybrany_row = df_vse[df_vse['Ticker'] == vybrany_ticker_cisty].iloc[0]
+full_ticker = vybrany_row['Full_Ticker']
+
+# Načtení historie a vykreslení grafu
+with st.spinner(f"Načítám graf pro {vybrany_ticker_cisty}..."):
+    df_historie = stahni_historii_grafu(full_ticker)
+    
+    if not df_historie.empty:
+        fig = px.line(
+            df_historie, 
+            x='Date', 
+            y='Close', 
+            title=f"Vývoj ceny aktiv: {vybrana_akcie_text} (Posledních 30 dní)",
+            labels={'Date': 'Datum', 'Close': 'Cena (USD / EUR / CZK)'}
+        )
+        # Stylování grafu do tmavého režimu
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#1E232A",
+            plot_bgcolor="#1E232A",
+            font_color="#FAFAFA"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning(f"Graf pro {vybrany_ticker_cisty} se nepodařilo načíst z trhů. Zkuste to prosím za malou chvíli.")
