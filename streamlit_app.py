@@ -167,7 +167,6 @@ selected_ticker, selected_name = None, None
 with col_tab1:
     st.write("**Tabulka 1: Růstové a Big Tech**")
     if not df1.empty:
-        # Rozsekané řádky proti uřezávání na GitHubu
         ev1 = st.dataframe(
             style_df(df1),
             use_container_width=True,
@@ -182,7 +181,6 @@ with col_tab1:
 with col_tab2:
     st.write("**Tabulka 2: Hodnotové a Ostatní**")
     if not df2.empty:
-        # Rozsekané řádky proti uřezávání na GitHubu
         ev2 = st.dataframe(
             style_df(df2),
             use_container_width=True,
@@ -199,9 +197,27 @@ st.markdown("---")
 # --- DETAIL, GRAF, SEZÓNNOST, ZPRÁVY ---
 if selected_ticker:
     st.subheader(f"📊 Detail: {selected_name} ({selected_ticker})")
-    with st.spinner(f'Načítám {selected_name}...'):
+    
+    # Úprava popisků časů na plné české názvy
+    tf = {
+        "1 Den": ("1d", "1m"), 
+        "1 Týden": ("5d", "15m"), 
+        "1 Měsíc": ("1mo", "1d"), 
+        "3 Měsíce": ("3mo", "1d"), 
+        "Půl roku": ("6mo", "1d"), 
+        "Od začátku roku (YTD)": ("ytd", "1d"), 
+        "1 Rok": ("1y", "1d"), 
+        "2 Roky": ("2y", "1wk"), 
+        "5 Let": ("5y", "1wk"), 
+        "Celá historie": ("max", "1mo")
+    }
+    sel_tf = st.radio("Vyber časový horizont grafu:", list(tf.keys()), horizontal=True)
+    period, interval = tf[sel_tf]
+
+    with st.spinner(f'Načítám historická data pro {selected_name}...'):
         stock = yf.Ticker(selected_ticker)
         pe_ratio, high_52, low_52 = 'N/A', 'N/A', 'N/A'
+        
         try:
             inf = stock.info
             pe_raw = inf.get('trailingPE', 'N/A')
@@ -209,40 +225,36 @@ if selected_ticker:
             high_52 = inf.get('fiftyTwoWeekHigh', 'N/A')
             low_52 = inf.get('fiftyTwoWeekLow', 'N/A')
         except: pass
-        
-        m1, m2, m3 = st.columns(3)
-        ak_data = df_all.loc[df_all['Ticker'] == selected_ticker]
-        c_tab = ak_data['Cena ($)'].values[0]
-        p_tab = ak_data['Změna (%)'].values[0]
-        
-        m1.metric("Aktuální cena", f"{c_tab:.2f}", delta=f"{p_tab:+.2f} %")
-        m2.metric("P/E Ratio", pe_ratio)
-        m3.metric("Min / Max (52 týdnů)", f"{low_52} / {high_52}" if low_52 != 'N/A' else "N/A")
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        tf = {
-            "1D": ("1d", "1m"), "1T": ("5d", "15m"), "1M": ("1mo", "1d"), "3M": ("3mo", "1d"), 
-            "6M": ("6mo", "1d"), "YTD": ("ytd", "1d"), "1R": ("1y", "1d"), "2R": ("2y", "1wk"), 
-            "5L": ("5y", "1wk"), "MAX": ("max", "1mo")
-        }
-        sel_tf = st.radio("Časový úsek:", list(tf.keys()), horizontal=True)
-        period, interval = tf[sel_tf]
-        
+
+        # Stažení dat pro graf a dynamický výpočet změny
         try:
             h_df = yf.download(selected_ticker, period=period, interval=interval, progress=False)
             if not h_df.empty:
                 if isinstance(h_df.columns, pd.MultiIndex): h_df.columns = h_df.columns.droplevel(1)
                 h_df = h_df.dropna(subset=['Close'])
                 h_df = h_df[h_df['Close'] > 0]
+                
                 f_pr, l_pr = h_df['Close'].iloc[0], h_df['Close'].iloc[-1]
+                
+                # Výpočet změny specificky pro zvolené období
+                period_ch_pct = ((l_pr - f_pr) / f_pr) * 100
                 col = '#00ff00' if l_pr >= f_pr else '#ff0000'
                 
+                # Vykreslení tří hlavních okének metrik (Aktuální cena teď reaguje na vybraný čas)
+                m1, m2, m3 = st.columns(3)
+                m1.metric(f"Cena a pohyb za ({sel_tf})", f"{l_pr:.2f}", delta=f"{period_ch_pct:+.2f} %")
+                m2.metric("P/E Ratio", pe_ratio)
+                m3.metric("Min / Max (52 týdnů)", f"{low_52} / {high_52}" if low_52 != 'N/A' else "N/A")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Samotný graf
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=h_df.index, y=h_df['Close'], mode='lines', name=selected_name, line=dict(color=col, width=3), fill='tozeroy', fillcolor=f"rgba({0 if col=='#00ff00' else 255}, {255 if col=='#00ff00' else 0}, 0, 0.1)"))
                 fig.add_hline(y=l_pr, line_dash="dot", line_color="white", annotation_text=f"AKT. CENA: {l_pr:.2f}", annotation_position="top left", annotation_font=dict(size=16, color="white", family="Arial Black"))
                 fig.update_layout(xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark", yaxis=dict(range=[h_df['Close'].min()*0.99, h_df['Close'].max()*1.01]), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified", font=dict(color="white", size=14))
                 st.plotly_chart(fig, use_container_width=True)
-        except: st.error("Chyba grafu.")
+        except: 
+            st.error("Chyba grafu.")
 
     # --- ČESKÉ GOOGLE ZPRÁVY S DATEM ---
     st.markdown("### 📰 Aktuální zprávy (v češtině)")
