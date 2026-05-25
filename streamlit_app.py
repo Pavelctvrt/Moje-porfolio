@@ -25,10 +25,7 @@ st.write("Vítejte ve svém investičním přehledu. Data jsou automaticky staho
 
 # 2. Definice tvých 40 akcií (Tickery)
 tickery = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK-B", "JNJ", "V",
-    "WMT", "PG", "MA", "UNH", "HD", "XOM", "DIS", "KO", "PEP", "COST",
-    "AMD", "INTC", "CSCO", "ORCL", "CRM", "NFLX", "ADBE", "NKE", "MCD", "SBUX",
-    "PM", "MO", "PFE", "MRK", "ABV", "T", "VZ", "BAC", "JPM", "GS"
+    "AAPL", "MSFT", "TSLA"
 ]
 
 # 3. Načítání dat z Yahoo Finance
