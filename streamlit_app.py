@@ -198,13 +198,22 @@ if selected_ticker:
     
     with st.spinner(f'Stahuji detaily a graf pro {selected_name}...'):
         stock = yf.Ticker(selected_ticker)
-        stock_info = stock.info
         
-        pe_ratio = stock_info.get('trailingPE', 'N/A')
-        if isinstance(pe_ratio, (int, float)): pe_ratio = round(pe_ratio, 2)
-            
-        high_52 = stock_info.get('fiftyTwoWeekHigh', 'N/A')
-        low_52 = stock_info.get('fiftyTwoWeekLow', 'N/A')
+        # OBRNĚNÍ PROTI RATE LIMITU YAHOO
+        pe_ratio = 'N/A'
+        high_52 = 'N/A'
+        low_52 = 'N/A'
+        
+        try:
+            stock_info = stock.info
+            pe_ratio_raw = stock_info.get('trailingPE', 'N/A')
+            if isinstance(pe_ratio_raw, (int, float)):
+                pe_ratio = round(pe_ratio_raw, 2)
+            high_52 = stock_info.get('fiftyTwoWeekHigh', 'N/A')
+            low_52 = stock_info.get('fiftyTwoWeekLow', 'N/A')
+        except Exception:
+            # Pokud nás Yahoo zablokuje pro detaily, necháme tam N/A a nespadneme
+            pass
         
         m1, m2, m3 = st.columns(3)
         akcie_data = df_all.loc[df_all['Ticker'] == selected_ticker]
@@ -227,44 +236,47 @@ if selected_ticker:
         selected_tf_label = st.radio("Vyber časový úsek:", list(timeframes.keys()), horizontal=True)
         period, interval = timeframes[selected_tf_label]
         
-        history_data = yf.download(selected_ticker, period=period, interval=interval, progress=False)
-        
-        if not history_data.empty:
-            if isinstance(history_data.columns, pd.MultiIndex):
-                history_data.columns = history_data.columns.droplevel(1)
+        try:
+            history_data = yf.download(selected_ticker, period=period, interval=interval, progress=False)
             
-            history_data = history_data.dropna(subset=['Close'])
-            history_data = history_data[history_data['Close'] > 0]
-            
-            first_price = history_data['Close'].iloc[0]
-            last_price = history_data['Close'].iloc[-1]
-            line_color = '#00ff00' if last_price >= first_price else '#ff0000'
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=history_data.index, y=history_data['Close'], mode='lines',
-                name=selected_name, line=dict(color=line_color, width=3), fill='tozeroy',
-                fillcolor=f"rgba({0 if line_color=='#00ff00' else 255}, {255 if line_color=='#00ff00' else 0}, 0, 0.1)"
-            ))
-            
-            fig.add_hline(
-                y=last_price, line_dash="dot", line_color="white",
-                annotation_text=f"AKT. CENA: {last_price:.2f}", annotation_position="top left",
-                annotation_font=dict(size=16, color="white", family="Arial Black")
-            )
-            
-            y_min = history_data['Close'].min() * 0.99
-            y_max = history_data['Close'].max() * 1.01
-            
-            fig.update_layout(
-                xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark",
-                yaxis=dict(range=[y_min, y_max]),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
-                font=dict(color="white", size=14)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if not history_data.empty:
+                if isinstance(history_data.columns, pd.MultiIndex):
+                    history_data.columns = history_data.columns.droplevel(1)
+                
+                history_data = history_data.dropna(subset=['Close'])
+                history_data = history_data[history_data['Close'] > 0]
+                
+                first_price = history_data['Close'].iloc[0]
+                last_price = history_data['Close'].iloc[-1]
+                line_color = '#00ff00' if last_price >= first_price else '#ff0000'
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=history_data.index, y=history_data['Close'], mode='lines',
+                    name=selected_name, line=dict(color=line_color, width=3), fill='tozeroy',
+                    fillcolor=f"rgba({0 if line_color=='#00ff00' else 255}, {255 if line_color=='#00ff00' else 0}, 0, 0.1)"
+                ))
+                
+                fig.add_hline(
+                    y=last_price, line_dash="dot", line_color="white",
+                    annotation_text=f"AKT. CENA: {last_price:.2f}", annotation_position="top left",
+                    annotation_font=dict(size=16, color="white", family="Arial Black")
+                )
+                
+                y_min = history_data['Close'].min() * 0.99
+                y_max = history_data['Close'].max() * 1.01
+                
+                fig.update_layout(
+                    xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark",
+                    yaxis=dict(range=[y_min, y_max]),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified",
+                    font=dict(color="white", size=14)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            st.error("Nepodařilo se stáhnout data pro graf (limit API). Zkuste to za chvíli.")
 
-    # --- ZPRÁVY / ČLÁNKY (Bez složitého filtrování času) ---
+    # --- ZPRÁVY / ČLÁNKY ---
     st.markdown("### 📰 Aktuální zprávy")
     try:
         news_data = stock.news
@@ -284,50 +296,4 @@ if selected_ticker:
                 if link != '#':
                     valid_news_found = True
                     st.markdown(f"**[{title}]({link})**")
-                    st.caption(f"🗞️ {publisher} | 🕒 {date_str}")
-                    st.write("") 
-            
-            if not valid_news_found:
-                st.info("Momentálně pro tuto společnost nejsou k dispozici žádné čitelné články.")
-        else:
-            st.info("Pro tuto akcii nebyly nalezeny žádné novinky.")
-    except Exception as e:
-        st.warning("Nepodařilo se načíst zprávy z Yahoo Finance. Zkuste to později.")
-
-    # --- SEZÓNNOST ---
-    with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
-        with st.spinner('Počítám sezónnostní matici...'):
-            seas_data = yf.download(selected_ticker, period="10y", interval="1mo", progress=False)
-            
-            if not seas_data.empty:
-                if isinstance(seas_data.columns, pd.MultiIndex):
-                    seas_data.columns = seas_data.columns.droplevel(1)
-                    
-                seas_data = seas_data.dropna(subset=['Close'])
-                seas_data = seas_data[seas_data['Close'] > 0]
-                
-                seas_data['Return'] = seas_data['Close'].pct_change() * 100
-                seas_data = seas_data.dropna(subset=['Return'])
-                
-                seas_data['Rok'] = seas_data.index.year
-                seas_data['Měsíc'] = seas_data.index.month
-                
-                pivot_df = seas_data.pivot(index='Rok', columns='Měsíc', values='Return')
-                pivot_df = pivot_df.sort_index(ascending=False)
-                
-                months_names = {
-                    1: 'Leden', 2: 'Únor', 3: 'Březen', 4: 'Duben', 5: 'Květen', 6: 'Červen', 
-                    7: 'Červenec', 8: 'Srpen', 9: 'Září', 10: 'Říjen', 11: 'Listopad', 12: 'Prosinec'
-                }
-                pivot_df = pivot_df.rename(columns=months_names)
-                
-                def style_seasonality(val):
-                    if pd.isna(val):
-                        return ''
-                    color = '#00ff00' if val > 0 else ('#ff0000' if val < 0 else 'white')
-                    return f'color: {color}; font-weight: bold; font-size: 1.1rem;'
-                
-                styled_pivot = pivot_df.style.map(style_seasonality).format("{:+.2f} %", na_rep="-")
-                st.dataframe(styled_pivot, use_container_width=True)
-else:
-    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení jejího detailního grafu, novinek a sezónnosti.")
+                    st.caption(f"
