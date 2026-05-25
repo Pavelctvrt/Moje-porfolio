@@ -32,13 +32,13 @@ st.markdown("""
     footer {visibility: hidden;}
     header {background: transparent !important;}
     
-    /* OPRAVA ČITELNOSTI ODKAZŮ (Zářivě světle modrá a tučnější písmo) */
+    /* PÍSMO PRO ČLÁNKY - Zářivě světle modrá a tučná */
     a {color: #66b3ff !important; text-decoration: none; font-weight: 700 !important;}
     a:hover {text-decoration: underline; color: #99ccff !important;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- INICIALIZACE PORTFOLIA ---
+# --- INICIALIZACE PORTFOLIA V SESSION STATE ---
 if 'TICKERS_1' not in st.session_state:
     st.session_state.TICKERS_1 = {
         "SXR8.DE": "SXR8.DE", "Gold": "GLD", "Meta": "META", "Tesla": "TSLA", 
@@ -89,7 +89,7 @@ if st.sidebar.button("❌ Odebrat akcii"):
         st.cache_data.clear()
         st.rerun()
 
-# --- NAČÍTÁNÍ DATA ---
+# --- FUNKCE PRO NAČÍTÁNÍ DATA ---
 @st.cache_data(ttl=60)
 def get_portfolio_data(tickers_dict):
     data = []
@@ -147,7 +147,7 @@ if sort_option == "🚀 Růst":
     if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=False)
 elif sort_option == "📉 Pokles":
     if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=True)
-    if not df2.empty: df2 = df2.sort_values(by="Zmhna (%)", ascending=True)
+    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=True)
 
 col_tab1, col_tab2 = st.columns(2)
 
@@ -166,4 +166,9 @@ with col_tab1:
         ev1 = st.dataframe(style_df(df1), use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
         if len(ev1.selection.rows) > 0:
             selected_ticker = df1.iloc[ev1.selection.rows[0]]["Ticker"]
-            selected_name = df1
+            selected_name = df1.iloc[ev1.selection.rows[0]]["Akcie"]
+
+with col_tab2:
+    st.write("**Tabulka 2: Hodnotové a Ostatní**")
+    if not df2.empty:
+        ev2 = st.dataframe(style_df(df2), use_container_width=True, hide_
