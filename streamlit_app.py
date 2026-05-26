@@ -1,12 +1,12 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
 import time
 from datetime import datetime
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
-import streamlit.components.v1 as components
 
 # --- NASTAVENÍ STRÁNKY ---
 st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="collapsed")
@@ -20,9 +20,6 @@ st.markdown("""
     footer {visibility: hidden;} header {background: transparent !important;}
     a {color: #66b3ff !important; text-decoration: none; font-weight: 700 !important;}
     a:hover {text-decoration: underline; color: #99ccff !important;}
-    
-    [data-testid="stSidebar"] {left: auto !important; right: 0 !important; border-left: 1px solid #333 !important; border-right: none !important;}
-    [data-testid="collapsedControl"] {left: auto !important; right: 1rem !important;}
     
     .big-value {font-size: 3.5rem; font-weight: 900; margin-bottom: -10px; line-height: 1.1;}
     .big-profit {font-size: 2.2rem; font-weight: 800; color: #00ff00;}
@@ -253,7 +250,7 @@ if temp_ticker is not None:
 
 st.markdown("---")
 
-# --- DETAIL A ZPRÁVY BEZ GRAFU ---
+# --- DETAIL, GRAF A ZPRÁVY ---
 if st.session_state.sel_ticker:
     sel_t = st.session_state.sel_ticker
     sel_n = st.session_state.sel_name
@@ -264,7 +261,7 @@ if st.session_state.sel_ticker:
         "3 Měsíce": ("3mo", "1d"), "Půl roku": ("6mo", "1d"), "YTD": ("ytd", "1d"), 
         "1 Rok": ("1y", "1d"), "2 Roky": ("2y", "1wk"), "Celá historie": ("max", "1mo")
     }
-    sel_tf = st.radio("Vyber časový horizont pro výpočet změny:", list(tf.keys()), horizontal=True)
+    sel_tf = st.radio("Vyber časový horizont pro výpočet změny a graf:", list(tf.keys()), horizontal=True)
     per, inter = tf[sel_tf]
 
     with st.spinner(f'Stahuji detaily pro {sel_n}...'):
@@ -288,6 +285,7 @@ if st.session_state.sel_ticker:
                 
                 fp, lp = h_df['Close'].iloc[0], h_df['Close'].iloc[-1]
                 pch = ((lp - fp) / fp) * 100
+                clr = '#00ff00' if lp >= fp else '#ff0000'
                 clr_class = 'detail-pct-up' if lp >= fp else 'detail-pct-down'
                 sign = '+' if lp >= fp else ''
                 
@@ -304,7 +302,14 @@ if st.session_state.sel_ticker:
                 m3.metric("Min / Max (52 týdnů)", f"{lo_52} / {hi_52}")
                 st.write("")
                 
-        except: st.error("Nelze stáhnout data pro tento časový úsek.")
+                # --- VYKRESLENÍ GRAFU ZPĚT ---
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=h_df.index, y=h_df['Close'], mode='lines', name=sel_n, line=dict(color=clr, width=3), fill='tozeroy', fillcolor=f"rgba({0 if clr=='#00ff00' else 255}, {255 if clr=='#00ff00' else 0}, 0, 0.1)"))
+                fig.add_hline(y=lp, line_dash="dot", line_color="white", annotation_text=f"CENA: {lp:.2f}", annotation_position="top left", annotation_font=dict(size=16, color="white", family="Arial Black"))
+                fig.update_layout(xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark", yaxis=dict(range=[h_df['Close'].min()*0.99, h_df['Close'].max()*1.01]), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
+                st.plotly_chart(fig, use_container_width=True)
+
+        except: st.error("Nelze stáhnout data nebo vykreslit graf pro tento časový úsek.")
 
     # --- SEZÓNNOST ---
     with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
