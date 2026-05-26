@@ -8,299 +8,287 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-# --- NASTAVENÍ STRÁNKY ---
-st.set_page_config(
-    page_title="Moje Portfolio",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# --- NASTAVENÍ STRÁNKY A AUTO-REFRESH ---
+st.set_page_config(page_title="Moje Portfolio", layout="wide", initial_sidebar_state="expanded")
 
-# --- VYNUCENÍ ČERNÉHO POZADÍ A MAXIMÁLNÍ ČITELNOSTI ---
+# --- VYNUCENÍ ČERNÉHO POZADÍ A CSS ---
 st.markdown("""
 <style>
-    .stApp, .main, [data-testid="stSidebar"] {
-        background-color: #000000 !important;
-        color: #ffffff !important;
-    }
-    .stMarkdown p, .stText, label, .stMetricLabel, [data-testid="stMetricValue"] {
-        color: #ffffff !important;
-        font-weight: 600 !important;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 2.8rem !important;
-        font-weight: 800 !important;
-    }
-    [data-testid="stDataFrame"] {
-        background-color: #111111 !important;
-    }
-    footer {visibility: hidden;}
-    header {background: transparent !important;}
-    
-    /* PÍSMO PRO ČLÁNKY - Zářivě světle modrá a tučná */
+    .stApp, .main, [data-testid="stSidebar"] {background-color: #000000 !important; color: #ffffff !important;}
+    .stMarkdown p, .stText, label {color: #ffffff !important; font-weight: 600 !important;}
+    [data-testid="stDataFrame"] {background-color: #111111 !important;}
+    footer {visibility: hidden;} header {background: transparent !important;}
     a {color: #66b3ff !important; text-decoration: none; font-weight: 700 !important;}
     a:hover {text-decoration: underline; color: #99ccff !important;}
+    
+    /* Třídy pro obří čísla v hlavičce */
+    .big-value {font-size: 3.5rem; font-weight: 900; margin-bottom: -10px; line-height: 1.1;}
+    .big-profit {font-size: 2.2rem; font-weight: 800; color: #00ff00;}
+    .big-loss {font-size: 2.2rem; font-weight: 800; color: #ff0000;}
+    .big-neutral {font-size: 2.2rem; font-weight: 800; color: #ffffff;}
 </style>
 """, unsafe_allow_html=True)
 
-# --- INICIALIZACE PORTFOLIA V SESSION STATE ---
-if 'TICKERS_1' not in st.session_state:
-    st.session_state.TICKERS_1 = {
-        "SXR8.DE": "SXR8.DE", "Gold": "GLD", "Meta": "META", "Tesla": "TSLA", 
-        "Netflix": "NFLX", "Google": "GOOGL", "Spotify": "SPOT", "Microsoft": "MSFT", 
-        "Amazon": "AMZN", "Nvidia": "NVDA", "Arm": "ARM", "AMD": "AMD", 
-        "Lam Research": "LRCX", "Applied Materials": "AMAT", "Super Micro": "SMCI", 
-        "Palantir": "PLTR", "Alibaba": "BABA", "McDonalds": "MCD", "Novo Nordisk": "NVO", 
-        "LVMH": "MC.PA", "CVS": "CVS", "Nike": "NKE", "Starbucks": "SBUX", 
-        "GameStop": "GME", "Bitcoin": "BTC-USD", "Coinbase": "COIN", "Robinhood": "HOOD"
+# --- INICIALIZACE NOVÉ PAMĚTI (MÉ PORTFOLIO A VYHLÍŽENÉ) ---
+if 'MY_PORTFOLIO' not in st.session_state:
+    st.session_state.MY_PORTFOLIO = {
+        "SXR8.DE": {"tick": "SXR8.DE", "ks": 14.0}, "Gold": {"tick": "GLD", "ks": 16.0},
+        "Meta": {"tick": "META", "ks": 2.0}, "Tesla": {"tick": "TSLA", "ks": 2.0},
+        "Netflix": {"tick": "NFLX", "ks": 6.0}, "Google": {"tick": "GOOGL", "ks": 4.0},
+        "Spotify": {"tick": "SPOT", "ks": 1.0}, "Microsoft": {"tick": "MSFT", "ks": 2.0},
+        "Nvidia": {"tick": "NVDA", "ks": 5.0}, "Arm": {"tick": "ARM", "ks": 4.0},
+        "AMD": {"tick": "AMD", "ks": 4.0}, "Lam Research": {"tick": "LRCX", "ks": 5.0},
+        "Applied Mat.": {"tick": "AMAT", "ks": 2.0}, "Super Micro": {"tick": "SMCI", "ks": 14.0},
+        "Palantir": {"tick": "PLTR", "ks": 6.0}, "Alibaba": {"tick": "BABA", "ks": 4.0},
+        "McDonalds": {"tick": "MCD", "ks": 1.0}, "Novo Nordisk": {"tick": "NVO", "ks": 8.0},
+        "LVMH": {"tick": "MC.PA", "ks": 1.0}, "CVS": {"tick": "CVS", "ks": 5.0},
+        "Nike": {"tick": "NKE", "ks": 3.0}, "Starbucks": {"tick": "SBUX", "ks": 2.0},
+        "GameStop": {"tick": "GME", "ks": 4.0}, "Bitcoin": {"tick": "BTC-USD", "ks": 0.153},
+        "Coinbase": {"tick": "COIN", "ks": 10.0}, "Robinhood": {"tick": "HOOD", "ks": 20.0}
     }
 
-if 'TICKERS_2' not in st.session_state:
-    st.session_state.TICKERS_2 = {
+if 'MY_WATCHLIST' not in st.session_state:
+    st.session_state.MY_WATCHLIST = {
         "Pepsi": "PEP", "Coca Cola": "KO", "Realty Income": "O", "Pfizer": "PFE", 
         "JPMorgan": "JPM", "Uber": "UBER", "ČEZ": "CEZ.PR", "Broadcom": "AVGO", 
         "Micron": "MU", "SOFI": "SOFI", "Intel": "INTC", "QCOM": "QCOM", 
-        "APP": "APP", "Serve Robotics": "SERV", "SPGI": "SPGI", "Dell": "DELL", 
-        "UNH": "UNH"
+        "APP": "APP", "Serve Rob.": "SERV", "SPGI": "SPGI", "Dell": "DELL", "UNH": "UNH"
     }
 
-# --- POSTRANNÍ PANEL ---
-st.sidebar.header("⚙️ Správa akcií")
-st.sidebar.subheader("Přidat novou")
-new_name = st.sidebar.text_input("Název (např. Apple)")
-new_ticker = st.sidebar.text_input("Ticker (např. AAPL)")
-target_table = st.sidebar.radio("Kam přidat?", ["Tabulka 1", "Tabulka 2"])
+# --- POSTRANNÍ PANEL (OVLÁDÁNÍ A REFRESH) ---
+st.sidebar.header("⚙️ Nástroje a správa")
+auto_ref = st.sidebar.checkbox("🔄 Auto-aktualizace (každých 60s)", value=False)
+if auto_ref:
+    st.markdown('<meta http-equiv="refresh" content="60">', unsafe_allow_html=True)
 
-if st.sidebar.button("➕ Přidat akcii"):
-    if new_name and new_ticker:
-        if "1" in target_table:
-            st.session_state.TICKERS_1[new_name] = new_ticker.upper()
-        else:
-            st.session_state.TICKERS_2[new_name] = new_ticker.upper()
-        st.cache_data.clear()
-        st.rerun()
+if st.sidebar.button("⚡ Aktualizovat ceny HNED", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Odebrat existující")
-all_current_stocks = {**st.session_state.TICKERS_1, **st.session_state.TICKERS_2}
-stock_to_remove = st.sidebar.selectbox("Vyber akcii k odebrání", [""] + list(all_current_stocks.keys()))
-
-if st.sidebar.button("❌ Odebrat akcii"):
-    if stock_to_remove:
-        if stock_to_remove in st.session_state.TICKERS_1:
-            del st.session_state.TICKERS_1[stock_to_remove]
-        elif stock_to_remove in st.session_state.TICKERS_2:
-            del st.session_state.TICKERS_2[stock_to_remove]
+st.sidebar.subheader("Přidat akcii do vyhlížených")
+new_n = st.sidebar.text_input("Název (např. Apple)")
+new_t = st.sidebar.text_input("Ticker (např. AAPL)")
+if st.sidebar.button("➕ Přidat vyhlíženou"):
+    if new_n and new_t:
+        st.session_state.MY_WATCHLIST[new_n] = new_t.upper()
         st.cache_data.clear()
         st.rerun()
 
-# --- FUNKCE PRO NAČÍTÁNÍ DATA ---
-@st.cache_data(ttl=60)
-def get_portfolio_data(tickers_dict):
-    data = []
-    for name, ticker in tickers_dict.items():
+# --- NAČÍTÁNÍ DAT ---
+@st.cache_data(ttl=50)
+def get_data_owned(port_dict):
+    d = []
+    for n, info in port_dict.items():
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="5d")
-            hist = hist.dropna(subset=['Close'])
-            hist = hist[hist['Close'] > 0]
-            if len(hist) >= 2:
-                prev_close = hist['Close'].iloc[-2]
-                current = hist['Close'].iloc[-1]
-                change_val = current - prev_close
-                change_pct = (change_val / prev_close) * 100
-            elif len(hist) == 1:
-                prev_close = current = hist['Close'].iloc[0]
-                change_val = 0.0
-                change_pct = 0.0
-            else:
-                continue
-            data.append({
-                "Akcie": name, "Ticker": ticker, "Cena ($)": current,
-                "Předchozí ($)": prev_close, "Změna (%)": change_pct, "Změna ($)": change_val
+            tk = info['tick']
+            ks = info['ks']
+            stk = yf.Ticker(tk)
+            hst = stk.history(period="5d").dropna(subset=['Close'])
+            hst = hst[hst['Close'] > 0]
+            if len(hst) >= 2:
+                p_cl = hst['Close'].iloc[-2]
+                c_cl = hst['Close'].iloc[-1]
+                ch_v = c_cl - p_cl
+                ch_p = (ch_v / p_cl) * 100
+            elif len(hst) == 1:
+                p_cl = c_cl = hst['Close'].iloc[0]
+                ch_v = ch_p = 0.0
+            else: continue
+            
+            val_now = c_cl * ks
+            val_prev = p_cl * ks
+            day_profit = val_now - val_prev
+            
+            d.append({
+                "Akcie": n, "Ticker": tk, "Cena ($)": c_cl, "Změna (%)": ch_p, 
+                "Ks": ks, "Hodnota ($)": val_now, "Denní Zisk ($)": day_profit
             })
-        except Exception:
-            continue
-    return pd.DataFrame(data)
+        except: continue
+    return pd.DataFrame(d)
 
-with st.spinner('Synchronizuji data z trhů...'):
-    df1 = get_portfolio_data(st.session_state.TICKERS_1)
-    df2 = get_portfolio_data(st.session_state.TICKERS_2)
+@st.cache_data(ttl=50)
+def get_data_watch(watch_dict):
+    d = []
+    for n, tk in watch_dict.items():
+        try:
+            stk = yf.Ticker(tk)
+            hst = stk.history(period="5d").dropna(subset=['Close'])
+            if len(hst) >= 2:
+                p_cl = hst['Close'].iloc[-2]
+                c_cl = hst['Close'].iloc[-1]
+                ch_p = ((c_cl - p_cl) / p_cl) * 100
+            else: continue
+            d.append({"Akcie": n, "Ticker": tk, "Cena ($)": c_cl, "Změna (%)": ch_p})
+        except: continue
+    return pd.DataFrame(d)
 
-# --- HLAVNÍ METRIKA ---
-st.title("📈 Moje Investiční Portfolio")
+with st.spinner('Stahuji aktuální ceny a propočítávám portfolio...'):
+    df_own = get_data_owned(st.session_state.MY_PORTFOLIO)
+    df_wat = get_data_watch(st.session_state.MY_WATCHLIST)
 
-if not df1.empty or not df2.empty:
-    df_all = pd.concat([df1, df2], ignore_index=True)
-    v_cur = df_all["Cena ($)"].sum()
-    v_prev = df_all["Předchozí ($)"].sum()
-    ch_val = v_cur - v_prev
-    ch_pct = (ch_val / v_prev) * 100 if v_prev > 0 else 0
+# --- HLAVNÍ OBŘÍ METRIKA PORTFOLIA ---
+st.markdown("<h1 style='text-align: center; color: #ffffff;'>📈 Můj Investiční Přehled</h1>", unsafe_allow_html=True)
+
+if not df_own.empty:
+    tot_val = df_own["Hodnota ($)"].sum()
+    tot_prof = df_own["Denní Zisk ($)"].sum()
+    tot_prev = tot_val - tot_prof
+    tot_pct = (tot_prof / tot_prev) * 100 if tot_prev > 0 else 0
     
-    st.metric(
-        label="Denní nárůst portfolia (při držení 1 ks od každé pozice)",
-        value=f"{v_cur:,.2f} USD",
-        delta=f"{ch_val:,.2f} USD ({ch_pct:+.2f} %)"
-    )
+    css_class = "big-profit" if tot_prof > 0 else ("big-loss" if tot_prof < 0 else "big-neutral")
+    sign = "+" if tot_prof > 0 else ""
+    
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 30px;">
+        <div style="color: #aaaaaa; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 2px;">Aktuální Hodnota Portfolia</div>
+        <div class="big-value">${tot_val:,.2f}</div>
+        <div class="{css_class}">{sign}{tot_prof:,.2f} $ ({sign}{tot_pct:,.2f} %) Dnes</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
-st.markdown("### Přehled akcií")
-sort_option = st.radio("Rychlé řazení:", ["Výchozí", "🚀 Růst", "📉 Pokles"], horizontal=True)
+st.markdown("### 📊 Přehled akcií")
 
-if sort_option == "🚀 Růst":
-    if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=False)
-    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=False)
-elif sort_option == "📉 Pokles":
-    if not df1.empty: df1 = df1.sort_values(by="Změna (%)", ascending=True)
-    if not df2.empty: df2 = df2.sort_values(by="Změna (%)", ascending=True)
+col_t1, col_t2 = st.columns(2)
 
-col_tab1, col_tab2 = st.columns(2)
+def style_own(df):
+    d = df[["Akcie", "Cena ($)", "Změna (%)", "Ks", "Hodnota ($)"]].copy()
+    return d.style.map(
+        lambda x: 'color: #00ff00; font-weight: 900' if x > 0 else ('color: #ff0000; font-weight: 900' if x < 0 else 'color: #ffffff; font-weight: 900'),
+        subset=['Změna (%)']
+    ).format({"Cena ($)": "{:.2f}", "Změna (%)": "{:+.2f} %", "Ks": "{:.3f}", "Hodnota ($)": "{:,.2f}"})
 
-def style_df(df):
-    display_df = df[["Akcie", "Cena ($)", "Změna (%)"]].copy()
-    return display_df.style.map(
+def style_wat(df):
+    d = df[["Akcie", "Cena ($)", "Změna (%)"]].copy()
+    return d.style.map(
         lambda x: 'color: #00ff00; font-weight: 900' if x > 0 else ('color: #ff0000; font-weight: 900' if x < 0 else 'color: #ffffff; font-weight: 900'),
         subset=['Změna (%)']
     ).format({"Cena ($)": "{:.2f}", "Změna (%)": "{:+.2f} %"})
 
-selected_ticker, selected_name = None, None
+sel_t, sel_n = None, None
 
-with col_tab1:
-    st.write("**Tabulka 1: Růstové a Big Tech**")
-    if not df1.empty:
-        ev1 = st.dataframe(
-            style_df(df1),
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row"
-        )
-        if len(ev1.selection.rows) > 0:
-            selected_ticker = df1.iloc[ev1.selection.rows[0]]["Ticker"]
-            selected_name = df1.iloc[ev1.selection.rows[0]]["Akcie"]
+with col_t1:
+    st.write("**Mé portfolio (držené akcie)**")
+    if not df_own.empty:
+        df_own = df_own.sort_values(by="Hodnota ($)", ascending=False)
+        e1 = st.dataframe(style_own(df_own), use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
+        if len(e1.selection.rows) > 0:
+            sel_t = df_own.iloc[e1.selection.rows[0]]["Ticker"]
+            sel_n = df_own.iloc[e1.selection.rows[0]]["Akcie"]
 
-with col_tab2:
-    st.write("**Tabulka 2: Hodnotové a Ostatní**")
-    if not df2.empty:
-        ev2 = st.dataframe(
-            style_df(df2),
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row"
-        )
-        if len(ev2.selection.rows) > 0:
-            selected_ticker = df2.iloc[ev2.selection.rows[0]]["Ticker"]
-            selected_name = df2.iloc[ev2.selection.rows[0]]["Akcie"]
+with col_t2:
+    st.write("**Vyhlížené akcie (watchlist)**")
+    if not df_wat.empty:
+        e2 = st.dataframe(style_wat(df_wat), use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
+        if len(e2.selection.rows) > 0:
+            sel_t = df_wat.iloc[e2.selection.rows[0]]["Ticker"]
+            sel_n = df_wat.iloc[e2.selection.rows[0]]["Akcie"]
 
 st.markdown("---")
 
-# --- DETAIL, GRAF, SEZÓNNOST, ZPRÁVY ---
-if selected_ticker:
-    st.subheader(f"📊 Detail: {selected_name} ({selected_ticker})")
+# --- DETAIL, GRAF A ZPRÁVY ---
+if sel_t:
+    st.subheader(f"📈 Analýza: {sel_n} ({sel_t})")
     
-    # Úprava popisků časů na plné české názvy
     tf = {
-        "1 Den": ("1d", "1m"), 
-        "1 Týden": ("5d", "15m"), 
-        "1 Měsíc": ("1mo", "1d"), 
-        "3 Měsíce": ("3mo", "1d"), 
-        "Půl roku": ("6mo", "1d"), 
-        "Od začátku roku (YTD)": ("ytd", "1d"), 
-        "1 Rok": ("1y", "1d"), 
-        "2 Roky": ("2y", "1wk"), 
-        "5 Let": ("5y", "1wk"), 
-        "Celá historie": ("max", "1mo")
+        "1 Den": ("1d", "1m"), "1 Týden": ("5d", "15m"), "1 Měsíc": ("1mo", "1d"), 
+        "3 Měsíce": ("3mo", "1d"), "Půl roku": ("6mo", "1d"), "YTD": ("ytd", "1d"), 
+        "1 Rok": ("1y", "1d"), "2 Roky": ("2y", "1wk"), "Celá historie": ("max", "1mo")
     }
     sel_tf = st.radio("Vyber časový horizont grafu:", list(tf.keys()), horizontal=True)
-    period, interval = tf[sel_tf]
+    per, inter = tf[sel_tf]
 
-    with st.spinner(f'Načítám historická data pro {selected_name}...'):
-        stock = yf.Ticker(selected_ticker)
-        pe_ratio, high_52, low_52 = 'N/A', 'N/A', 'N/A'
+    with st.spinner(f'Stahuji detaily pro {sel_n}...'):
+        stk = yf.Ticker(sel_t)
         
+        # Opravené robustní stažení P/E a 52week limitů (obejití restrikcí)
+        pe_val, hi_52, lo_52 = "N/A", "N/A", "N/A"
         try:
-            inf = stock.info
-            pe_raw = inf.get('trailingPE', 'N/A')
-            if isinstance(pe_raw, (int, float)): pe_ratio = round(pe_raw, 2)
-            high_52 = inf.get('fiftyTwoWeekHigh', 'N/A')
-            low_52 = inf.get('fiftyTwoWeekLow', 'N/A')
+            fi = stk.fast_info
+            if hasattr(fi, 'year_high'): hi_52 = round(fi.year_high, 2)
+            if hasattr(fi, 'year_low'): lo_52 = round(fi.year_low, 2)
+            
+            inf = stk.info
+            p_r = inf.get('trailingPE', 'N/A')
+            if isinstance(p_r, (int, float)): pe_val = round(p_r, 2)
         except: pass
 
-        # Stažení dat pro graf a dynamický výpočet změny
         try:
-            h_df = yf.download(selected_ticker, period=period, interval=interval, progress=False)
+            h_df = yf.download(sel_t, period=per, interval=inter, progress=False)
             if not h_df.empty:
                 if isinstance(h_df.columns, pd.MultiIndex): h_df.columns = h_df.columns.droplevel(1)
                 h_df = h_df.dropna(subset=['Close'])
                 h_df = h_df[h_df['Close'] > 0]
                 
-                f_pr, l_pr = h_df['Close'].iloc[0], h_df['Close'].iloc[-1]
+                fp, lp = h_df['Close'].iloc[0], h_df['Close'].iloc[-1]
+                pch = ((lp - fp) / fp) * 100
+                clr = '#00ff00' if lp >= fp else '#ff0000'
                 
-                # Výpočet změny specificky pro zvolené období
-                period_ch_pct = ((l_pr - f_pr) / f_pr) * 100
-                col = '#00ff00' if l_pr >= f_pr else '#ff0000'
-                
-                # Vykreslení tří hlavních okének metrik (Aktuální cena teď reaguje na vybraný čas)
                 m1, m2, m3 = st.columns(3)
-                m1.metric(f"Cena a pohyb za ({sel_tf})", f"{l_pr:.2f}", delta=f"{period_ch_pct:+.2f} %")
-                m2.metric("P/E Ratio", pe_ratio)
-                m3.metric("Min / Max (52 týdnů)", f"{low_52} / {high_52}" if low_52 != 'N/A' else "N/A")
-                st.markdown("<br>", unsafe_allow_html=True)
+                m1.metric(f"Vývoj ceny za ({sel_tf})", f"{lp:.2f}", delta=f"{pch:+.2f} %")
+                m2.metric("P/E Ratio", pe_val)
+                m3.metric("Min / Max (52 týdnů)", f"{lo_52} / {hi_52}")
+                st.write("")
                 
-                # Samotný graf
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=h_df.index, y=h_df['Close'], mode='lines', name=selected_name, line=dict(color=col, width=3), fill='tozeroy', fillcolor=f"rgba({0 if col=='#00ff00' else 255}, {255 if col=='#00ff00' else 0}, 0, 0.1)"))
-                fig.add_hline(y=l_pr, line_dash="dot", line_color="white", annotation_text=f"AKT. CENA: {l_pr:.2f}", annotation_position="top left", annotation_font=dict(size=16, color="white", family="Arial Black"))
-                fig.update_layout(xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark", yaxis=dict(range=[h_df['Close'].min()*0.99, h_df['Close'].max()*1.01]), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified", font=dict(color="white", size=14))
+                fig.add_trace(go.Scatter(x=h_df.index, y=h_df['Close'], mode='lines', name=sel_n, line=dict(color=clr, width=3), fill='tozeroy', fillcolor=f"rgba({0 if clr=='#00ff00' else 255}, {255 if clr=='#00ff00' else 0}, 0, 0.1)"))
+                fig.add_hline(y=lp, line_dash="dot", line_color="white", annotation_text=f"CENA: {lp:.2f}", annotation_position="top left", annotation_font=dict(size=16, color="white", family="Arial Black"))
+                fig.update_layout(xaxis_title="Čas", yaxis_title="Cena", template="plotly_dark", yaxis=dict(range=[h_df['Close'].min()*0.99, h_df['Close'].max()*1.01]), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', hovermode="x unified")
                 st.plotly_chart(fig, use_container_width=True)
-        except: 
-            st.error("Chyba grafu.")
+        except: st.error("Nelze vykreslit graf.")
 
-    # --- ČESKÉ GOOGLE ZPRÁVY S DATEM ---
-    st.markdown("### 📰 Aktuální zprávy (v češtině)")
-    try:
-        q = f'"{selected_name}" akcie OR "{selected_ticker}"'
-        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}&hl=cs&gl=CZ&ceid=CZ:cs"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        root = ET.fromstring(urllib.request.urlopen(req, timeout=5).read())
-        found = False
-        for item in root.findall('./channel/item')[:7]:
-            found = True
-            t_str = item.find('title').text
-            l_str = item.find('link').text
-            src = item.find('source').text if item.find('source') is not None else "Google News"
-            
-            p_date = item.find('pubDate').text
-            try:
-                dt_parsed = datetime.strptime(p_date[:-4], "%a, %d %b %Y %H:%M:%S")
-                d_str = dt_parsed.strftime("%d.%m.%Y %H:%M")
-            except:
-                d_str = p_date
-                
-            st.markdown(f"**[{t_str}]({l_str})**")
-            st.caption(f"🗞️ {src} | 🕒 {d_str}")
-            st.write("")
-        if not found: st.info("Žádné české články.")
-    except: st.warning("Zprávy nedostupné.")
-
-    # --- SEZÓNNOST ---
+    # --- SEZÓNNOST (Přesunuta pod graf) ---
     with st.expander("📅 Zobrazit Sezónnost (Měsíční výnosy v %)"):
-        with st.spinner('Počítám...'):
+        with st.spinner('Počítám sezónnost...'):
             try:
-                s_df = yf.download(selected_ticker, period="10y", interval="1mo", progress=False)
+                s_df = yf.download(sel_t, period="10y", interval="1mo", progress=False)
                 if not s_df.empty:
                     if isinstance(s_df.columns, pd.MultiIndex): s_df.columns = s_df.columns.droplevel(1)
                     s_df = s_df.dropna(subset=['Close'])
-                    s_df = s_df[s_df['Close'] > 0]
-                    s_df['Return'] = s_df['Close'].pct_change() * 100
-                    s_df = s_df.dropna(subset=['Return'])
+                    s_df['Ret'] = s_df['Close'].pct_change() * 100
+                    s_df = s_df.dropna(subset=['Ret'])
                     s_df['Rok'] = s_df.index.year
                     s_df['Měsíc'] = s_df.index.month
-                    p_df = s_df.pivot(index='Rok', columns='Měsíc', values='Return').sort_index(ascending=False)
-                    m_names = {1:'Leden', 2:'Únor', 3:'Březen', 4:'Duben', 5:'Květen', 6:'Červen', 7:'Červenec', 8:'Srpen', 9:'Září', 10:'Říjen', 11:'Listopad', 12:'Prosinec'}
-                    p_df = p_df.rename(columns=m_names)
-                    def st_s(v): return '' if pd.isna(v) else f"color: {'#00ff00' if v > 0 else '#ff0000'}; font-weight: bold; font-size: 1.1rem;"
-                    st.dataframe(p_df.style.map(st_s).format("{:+.2f} %", na_rep="-"), use_container_width=True)
-            except: st.error("Sezónnost nedostupná.")
+                    p_df = s_df.pivot(index='Rok', columns='Měsíc', values='Ret').sort_index(ascending=False)
+                    mn = {1:'Leden', 2:'Únor', 3:'Březen', 4:'Duben', 5:'Květen', 6:'Červen', 7:'Červenec', 8:'Srpen', 9:'Září', 10:'Říjen', 11:'Listopad', 12:'Prosinec'}
+                    p_df = p_df.rename(columns=mn)
+                    def s_cs(v): return '' if pd.isna(v) else f"color: {'#00ff00' if v>0 else '#ff0000'}; font-weight: bold; font-size: 1.1rem;"
+                    st.dataframe(p_df.style.map(s_cs).format("{:+.2f} %", na_rep="-"), use_container_width=True)
+            except: st.error("Data sezónnosti nejsou dostupná.")
+
+    # --- ZPRÁVY SEŘAZENÉ PODLE DATA ---
+    st.markdown("### 📰 Aktuální zprávy (v češtině)")
+    try:
+        q = f'"{sel_n}" akcie OR "{sel_t}"'
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}&hl=cs&gl=CZ&ceid=CZ:cs"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        root = ET.fromstring(urllib.request.urlopen(req, timeout=5).read())
+        
+        n_lst = []
+        for it in root.findall('./channel/item')[:20]:
+            t = it.find('title').text
+            l = it.find('link').text
+            s = it.find('source').text if it.find('source') is not None else "Google News"
+            pd = it.find('pubDate').text
+            try:
+                dt_obj = datetime.strptime(pd[:-4], "%a, %d %b %Y %H:%M:%S")
+                d_str = dt_obj.strftime("%d.%m.%Y %H:%M")
+            except:
+                dt_obj = datetime.min
+                d_str = pd
+            n_lst.append({"t": t, "l": l, "s": s, "d_str": d_str, "dt_obj": dt_obj})
+        
+        # Striktní seřazení od nejnovějších
+        n_lst.sort(key=lambda x: x["dt_obj"], reverse=True)
+        
+        if len(n_lst) > 0:
+            for it in n_lst[:7]:
+                st.markdown(f"**[{it['t']}]({it['l']})**")
+                st.caption(f"🗞️ {it['s']} | 🕒 {it['d_str']}")
+                st.write("")
+        else:
+            st.info("Žádné zprávy v češtině.")
+    except: st.warning("Nepodařilo se načíst zprávy.")
 else:
-    st.info("👆 Klikni na jakoukoliv akcii v tabulkách výše pro zobrazení detailů.")
+    st.info("👆 Klikni na akcii v tabulkách výše pro zobrazení detailní analýzy.")
